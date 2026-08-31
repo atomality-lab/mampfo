@@ -1,7 +1,7 @@
 {
-  "name": "Ernährungs-App – Prototyp",
-  "short_name": "Ernährung",
-  "description": "Persönliches Ernährungstagebuch",
+  "name": "Mampfo",
+  "short_name": "Mampfo",
+  "description": "Persönliches Ernährungstagebuch mit schneller Lebensmittelauswahl",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

@@ -1,45 +1,79 @@
-# Ernährungs-App – Prototyp v0.1.0
+# Mampfo v0.2.0
 
-Arbeitsname / neutraler Prototyp. Der endgültige App-Name ist noch offen.
+Mampfo ist eine persönliche, lokal gespeicherte PWA zum Ernährungstracking.
 
-## Enthalten
+## Neu in v0.2
 
-- PWA-Grundgerüst, offlinefähig
-- Ersteinrichtung für Kalorien- und Proteinziel
-- Tagesübersicht mit Kalorien, Protein und Ballaststoffen
-- Tagesnavigation vor/zurück und Sprung zu Heute
-- Ernährungseinträge mit Datum und Uhrzeit
-- Einträge erstellen, bearbeiten und löschen
-- lokale Speicherung im Browser via localStorage
-- Einstellungen für Tagesziele
-- Platzhalter für Rezepte, Fasten und Auswertung
-- responsives Smartphone-/Tablet-Layout
-- pastelliges Design nach dem abgestimmten Prototyp
+- persönliche Datenbank für gespeicherte Lebensmittel
+- Abfrage nach neuen manuellen Einträgen: „Für später speichern?“
+- Erkennung bereits gespeicherter Lebensmittel mit abweichenden Nährwerten
+- Favoriten
+- Bereich „Zuletzt verwendet“
+- Bereich „Häufig verwendet“
+- intelligente Vorschläge ab zwei Zeichen während der Eingabe
+- Verwaltung gespeicherter Lebensmittel in den Einstellungen
+- Bearbeiten und Löschen gespeicherter Lebensmittel
+- Migration bestehender v0.1-Daten
+- Branding auf „Mampfo“ aktualisiert
 
-## Starten
+## Bestehende Daten aus v0.1
 
-### Lokal
+v0.2 verwendet neue, app-spezifische localStorage-Schlüssel (`mampfo.*`). Beim ersten Start versucht Mampfo automatisch, bestehende Daten der v0.1 aus den bisherigen `nutrition.*`-Schlüsseln zu übernehmen.
 
-Da Service Worker nicht zuverlässig über `file://` funktionieren, die Dateien am besten über einen kleinen lokalen Webserver starten:
+Die alten v0.1-Schlüssel werden dabei **nicht gelöscht**. Dadurch bleibt eine zusätzliche Rückfallebene erhalten.
+
+Wichtig: Die Daten sind weiterhin lokal an den jeweiligen Browser bzw. das jeweilige Gerät gebunden. Ein Sync zwischen Geräten ist noch nicht enthalten.
+
+## Installation / Veröffentlichung
+
+Es gibt keinen Build-Prozess und keine externen Abhängigkeiten. Der Inhalt dieses Ordners kann direkt in das GitHub-Pages-Repository kopiert werden.
+
+Für ein Update der bestehenden Seite:
+
+1. bisherigen Repository-Inhalt sichern bzw. committen
+2. Dateien aus dieser Version in das Repository übernehmen und vorhandene Dateien ersetzen
+3. committen und pushen
+4. GitHub Pages neu laden
+
+Der Service Worker verwendet mit v0.2 einen neuen Cache-Namen, damit die aktualisierten Dateien geladen werden.
+
+## Lokaler Test
 
 ```bash
 python -m http.server 8080
 ```
 
-Dann im Browser `http://localhost:8080` öffnen.
+Danach im Browser `http://localhost:8080` öffnen.
 
-### GitHub Pages / Netlify
+## Funktionsumfang
 
-Der Inhalt dieses Ordners kann direkt veröffentlicht werden. Es gibt keine Build-Abhängigkeiten und keine externen Bibliotheken.
+### Ernährungstagebuch
 
-## App-Namen später ändern
+- Tagesziele für Kalorien und Protein
+- Tagesübersicht mit Kalorien, Protein und Ballaststoffen
+- Essen mit Datum und Uhrzeit erfassen
+- Einträge bearbeiten und löschen
+- Tagesnavigation
 
-Der sichtbare Name ist zentral in `config.js` hinterlegt. Zusätzlich sollten bei Festlegung des endgültigen Namens `manifest.webmanifest` und der `<title>`-Fallback in `index.html` angepasst werden.
+### Gespeicherte Lebensmittel
 
-## Datenspeicherung
+- Lebensmittel nach dem Tracken speichern
+- wiederverwenden und automatisch in die Eingabefelder übernehmen
+- als Favorit markieren
+- zuletzt und häufig verwendete Lebensmittel anzeigen
+- gespeicherte Lebensmittel bearbeiten oder löschen
+- alte Tagebucheinträge bleiben bei Änderungen an Vorlagen unverändert
 
-v0.1 speichert alle Daten ausschließlich lokal im jeweiligen Browser/Gerät. Ein Export, Import oder Geräte-Sync ist noch nicht enthalten.
+### Noch Platzhalter
+
+- Rezepte
+- Fasten
+- Auswertung
+
+## Datenschutz
+
+Mampfo v0.2 speichert die Daten ausschließlich lokal im Browser. Es gibt keine Anmeldung, keinen Server und keine Cloud-Synchronisation.
 
 ## Version
 
-0.1.0
+0.2.0

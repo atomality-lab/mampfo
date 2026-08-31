@@ -1,5 +1,5 @@
 window.APP_CONFIG = {
-  appName: 'Ernährungs-App',
-  shortName: 'Ernährung',
-  version: '0.1.0'
+  appName: 'Mampfo',
+  shortName: 'Mampfo',
+  version: '0.2.0'
 };
