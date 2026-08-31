@@ -1,50 +1,63 @@
-# Mampfo v0.2.1
+# Mampfo v0.3.1
 
 Mampfo ist eine persönliche, lokal gespeicherte PWA zum Ernährungstracking.
 
-## Neu in v0.2.1
+## Neu in v0.3.1
 
-- bestehende Tagebucheinträge können beim Bearbeiten nachträglich als Lebensmittel gespeichert werden
-- identische bereits gespeicherte Lebensmittel werden erkannt und nur verknüpft
-- bei abweichenden Nährwerten kann wahlweise verknüpft oder die gespeicherte Vorlage aktualisiert werden
-- die ursprüngliche `source` eines historischen Eintrags bleibt erhalten; nur `foodId` wird ergänzt
-- beim Löschen eines gespeicherten Lebensmittels werden Verknüpfungen in Tagebucheinträgen sauber gelöst
-- alte Tagebucheinträge und Nährwerte bleiben unverändert
+- Bezugsmenge für gespeicherte Lebensmittel
+- Einheiten: g, ml, Stück und Portion
+- automatische Skalierung der Nährwerte innerhalb derselben Einheit
+- zusätzliche optionale Nährwerte: Fett und Kohlenhydrate
+- kompakter Bereich „Weitere Nährwerte“ beim Erfassen und in der Tagesansicht
+- Mengenangabe in Tagebucheinträgen
+- bestehende Lebensmittel aus v0.2.x werden automatisch als `1 Portion` migriert
+- alte Tagebucheinträge bleiben unverändert; neue Mengenfelder sind dort zunächst leer
+- Datenmodell auf Version 3 aktualisiert
 
-## Enthalten seit v0.2
+## Mengenlogik
 
-- persönliche Datenbank für gespeicherte Lebensmittel
-- Abfrage nach neuen manuellen Einträgen: „Für später speichern?“
-- Erkennung bereits gespeicherter Lebensmittel mit abweichenden Nährwerten
+Die Nährwerte eines gespeicherten Lebensmittels beziehen sich immer auf seine Bezugsmenge.
+
+Beispiel:
+
+- 100 g = 350 kcal
+- beim Erfassen werden 250 g gewählt
+- Mampfo berechnet automatisch 875 kcal
+
+Die gespeicherte Vorlage bleibt weiterhin bei 350 kcal pro 100 g. Eine automatische Umrechnung zwischen unterschiedlichen Einheiten findet nicht statt.
+
+## Bestehende Funktionen
+
+- Tagesziele für Kalorien und Protein
+- Tagesübersicht mit Kalorien, Protein und Ballaststoffen
+- Fett und Kohlenhydrate als sekundäre Tageswerte
+- Essen mit Datum und Uhrzeit erfassen
+- Einträge bearbeiten und löschen
+- gespeicherte Lebensmittel
 - Favoriten
-- Bereich „Zuletzt verwendet“
-- Bereich „Häufig verwendet“
-- intelligente Vorschläge ab zwei Zeichen während der Eingabe
-- Verwaltung gespeicherter Lebensmittel in den Einstellungen
-- Bearbeiten und Löschen gespeicherter Lebensmittel
-- Migration bestehender v0.1-Daten
-- Branding auf „Mampfo“ aktualisiert
+- „Zuletzt verwendet“ und „Häufig verwendet“
+- intelligente Suchvorschläge
+- alte Tagebucheinträge nachträglich als Lebensmittel speichern
+- lokale Speicherung und Offline-PWA
 
-## Bestehende Daten aus v0.1
+## Datenmigration
 
-v0.2 verwendet neue, app-spezifische localStorage-Schlüssel (`mampfo.*`). Beim ersten Start versucht Mampfo automatisch, bestehende Daten der v0.1 aus den bisherigen `nutrition.*`-Schlüsseln zu übernehmen.
+v0.3.1 verwendet weiterhin die bestehenden `mampfo.*`-Speicherbereiche aus v0.2.x. Beim Start werden die Daten auf `dataVersion = 3` erweitert.
 
-Die alten v0.1-Schlüssel werden dabei **nicht gelöscht**. Dadurch bleibt eine zusätzliche Rückfallebene erhalten.
+Bestehende SavedFoods erhalten automatisch:
 
-Wichtig: Die Daten sind weiterhin lokal an den jeweiligen Browser bzw. das jeweilige Gerät gebunden. Ein Sync zwischen Geräten ist noch nicht enthalten.
+- `baseAmount = 1`
+- `baseUnit = portion`
+- `fat = null`, falls noch nicht vorhanden
+- `carbohydrates = null`, falls noch nicht vorhanden
 
-## Installation / Veröffentlichung
+Bestehende Tagebucheinträge erhalten lediglich die neuen optionalen Felder `amount` und `unit`, ohne ihre bisherigen Werte zu verändern.
 
-Es gibt keinen Build-Prozess und keine externen Abhängigkeiten. Der Inhalt dieses Ordners kann direkt in das GitHub-Pages-Repository kopiert werden.
+## Veröffentlichung auf GitHub Pages
 
-Für ein Update der bestehenden Seite:
+Es gibt keinen Build-Prozess und keine externen Abhängigkeiten. Den Inhalt dieses Ordners direkt in das bestehende Repository kopieren und die vorhandenen Dateien ersetzen.
 
-1. bisherigen Repository-Inhalt sichern bzw. committen
-2. Dateien aus dieser Version in das Repository übernehmen und vorhandene Dateien ersetzen
-3. committen und pushen
-4. GitHub Pages neu laden
-
-Der Service Worker verwendet mit v0.2.1 einen neuen Cache-Namen, damit die aktualisierten Dateien geladen werden.
+Der Service Worker verwendet für v0.3.1 einen neuen Cache-Namen. Falls ein Gerät zunächst noch die alte Version zeigt, die installierte PWA einmal vollständig schließen und erneut öffnen.
 
 ## Lokaler Test
 
@@ -52,37 +65,18 @@ Der Service Worker verwendet mit v0.2.1 einen neuen Cache-Namen, damit die aktua
 python -m http.server 8080
 ```
 
-Danach im Browser `http://localhost:8080` öffnen.
+Danach `http://localhost:8080` im Browser öffnen.
 
-## Funktionsumfang
+## Noch Platzhalter
 
-### Ernährungstagebuch
-
-- Tagesziele für Kalorien und Protein
-- Tagesübersicht mit Kalorien, Protein und Ballaststoffen
-- Essen mit Datum und Uhrzeit erfassen
-- Einträge bearbeiten und löschen
-- Tagesnavigation
-
-### Gespeicherte Lebensmittel
-
-- Lebensmittel nach dem Tracken speichern
-- wiederverwenden und automatisch in die Eingabefelder übernehmen
-- als Favorit markieren
-- zuletzt und häufig verwendete Lebensmittel anzeigen
-- gespeicherte Lebensmittel bearbeiten oder löschen
-- alte Tagebucheinträge bleiben bei Änderungen an Vorlagen unverändert
-
-### Noch Platzhalter
-
-- Rezepte
+- Rezepte, geplant für v0.3.2 und v0.3.3
 - Fasten
 - Auswertung
 
 ## Datenschutz
 
-Mampfo v0.2.1 speichert die Daten ausschließlich lokal im Browser. Es gibt keine Anmeldung, keinen Server und keine Cloud-Synchronisation.
+Mampfo speichert die Daten weiterhin ausschließlich lokal im jeweiligen Browser bzw. auf dem jeweiligen Gerät. Es gibt keine Anmeldung, keinen Server und keine Cloud-Synchronisation.
 
 ## Version
 
-0.2.1
+0.3.1

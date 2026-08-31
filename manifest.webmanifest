@@ -1,7 +1,7 @@
 {
   "name": "Mampfo",
   "short_name": "Mampfo",
-  "description": "Persönliches Ernährungstagebuch mit schneller Lebensmittelauswahl",
+  "description": "Persönliches Ernährungstagebuch mit Mengenberechnung und schneller Lebensmittelauswahl",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

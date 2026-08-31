@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mampfo-v0.2.1';
+const CACHE_NAME = 'mampfo-v0.3.1';
 const ASSETS = [
   './',
   './index.html',

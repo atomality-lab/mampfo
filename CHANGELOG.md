@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.3.1 – Mengen und zusätzliche Nährwerte
+
+- Bezugsmenge für gespeicherte Lebensmittel ergänzt
+- Einheiten g, ml, Stück und Portion ergänzt
+- automatische Skalierung der Nährwerte innerhalb derselben Einheit
+- Fett und Kohlenhydrate als optionale Nährwerte ergänzt
+- Tagesansicht um einklappbare sekundäre Nährwerte erweitert
+- Tagebucheinträge speichern künftig optional Menge und Einheit
+- SavedFoods speichern künftig `baseAmount` und `baseUnit`
+- v0.2.x-SavedFoods werden automatisch als 1 Portion migriert
+- Datenmodell auf Version 3 aktualisiert
+- historische Daten bleiben unverändert
+- Service-Worker-Cache auf v0.3.1 aktualisiert
+
 ## 0.2.1 – Alte Einträge nachträglich speichern
 
 - Tagebucheinträge können im Bearbeitungsmodus nachträglich als gespeichertes Lebensmittel übernommen werden

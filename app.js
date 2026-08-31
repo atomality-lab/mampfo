@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const CFG = window.APP_CONFIG || { appName: 'Mampfo', version: '0.2.1' };
+  const CFG = window.APP_CONFIG || { appName: 'Mampfo', version: '0.3.1' };
   const STORAGE = {
     settings: 'mampfo.settings.v2',
     entries: 'mampfo.entries.v2',
@@ -38,7 +38,9 @@
         source: entry.source || 'manual',
         foodId: entry.foodId || null,
         fat: entry.fat ?? null,
-        carbohydrates: entry.carbohydrates ?? null
+        carbohydrates: entry.carbohydrates ?? null,
+        amount: entry.amount ?? null,
+        unit: entry.unit ?? null
       }));
       localStorage.setItem(STORAGE.entries, JSON.stringify(legacyEntries));
     }
@@ -46,10 +48,35 @@
       localStorage.setItem(STORAGE.onboarded, localStorage.getItem(LEGACY.onboarded));
     }
     if (!has(STORAGE.foods)) localStorage.setItem(STORAGE.foods, '[]');
-    localStorage.setItem(STORAGE.dataVersion, '2');
   }
 
-  migrateLegacyData();
+  function migrateToV3() {
+    migrateLegacyData();
+    const entries = load(STORAGE.entries, []).map(entry => ({
+      foodId: null,
+      source: 'manual',
+      fat: null,
+      carbohydrates: null,
+      amount: null,
+      unit: null,
+      ...entry
+    }));
+    const foods = load(STORAGE.foods, []).map(food => ({
+      favorite: false,
+      usageCount: 0,
+      lastUsedAt: null,
+      fat: null,
+      carbohydrates: null,
+      baseAmount: 1,
+      baseUnit: 'portion',
+      ...food
+    }));
+    localStorage.setItem(STORAGE.entries, JSON.stringify(entries));
+    localStorage.setItem(STORAGE.foods, JSON.stringify(foods));
+    localStorage.setItem(STORAGE.dataVersion, '3');
+  }
+
+  migrateToV3();
 
   const state = {
     view: 'today',
@@ -69,6 +96,8 @@
     source: 'manual',
     fat: null,
     carbohydrates: null,
+    amount: null,
+    unit: null,
     ...entry
   }));
   state.savedFoods = state.savedFoods.map(food => ({
@@ -77,6 +106,8 @@
     lastUsedAt: null,
     fat: null,
     carbohydrates: null,
+    baseAmount: 1,
+    baseUnit: 'portion',
     ...food
   }));
 
@@ -91,7 +122,7 @@
     localStorage.setItem(STORAGE.entries, JSON.stringify(state.entries));
     localStorage.setItem(STORAGE.foods, JSON.stringify(state.savedFoods));
     localStorage.setItem(STORAGE.onboarded, state.onboarded ? 'yes' : 'no');
-    localStorage.setItem(STORAGE.dataVersion, '2');
+    localStorage.setItem(STORAGE.dataVersion, '3');
   }
 
   function todayISO() {
@@ -154,20 +185,88 @@
 
   function sameValue(a, b) {
     if (a == null && b == null) return true;
-    return Number(a ?? 0) === Number(b ?? 0);
+    if (a == null || b == null) return false;
+    return Math.abs(Number(a) - Number(b)) < 0.000001;
+  }
+
+  const NUTRIENT_KEYS = ['calories', 'protein', 'fiber', 'fat', 'carbohydrates'];
+
+  function sameNutrientSet(a, b) {
+    return NUTRIENT_KEYS.every(key => sameValue(a[key], b[key]));
+  }
+
+  function unitLabel(unit, amount = 1) {
+    if (unit === 'g') return 'g';
+    if (unit === 'ml') return 'ml';
+    if (unit === 'piece') return 'Stück';
+    if (unit === 'portion') return Number(amount) === 1 ? 'Portion' : 'Portionen';
+    return unit || 'Portion';
+  }
+
+  function amountLabel(amount, unit) {
+    if (amount == null || amount === '') return '';
+    return `${fmt(amount)} ${unitLabel(unit || 'portion', amount)}`;
+  }
+
+  function scaleFactor(food, amount, unit) {
+    const baseAmount = Number(food.baseAmount || 1);
+    const selectedAmount = Number(amount);
+    const baseUnit = food.baseUnit || 'portion';
+    if (!Number.isFinite(baseAmount) || baseAmount <= 0 || !Number.isFinite(selectedAmount) || selectedAmount < 0) return null;
+    if ((unit || baseUnit) !== baseUnit) return null;
+    return selectedAmount / baseAmount;
+  }
+
+  function scaledFoodValues(food, amount, unit) {
+    const factor = scaleFactor(food, amount, unit);
+    if (factor == null) return null;
+    const result = {};
+    NUTRIENT_KEYS.forEach(key => {
+      result[key] = food[key] == null ? null : Number(food[key]) * factor;
+    });
+    return result;
+  }
+
+  function valuesAtFoodBase(food, values) {
+    const amount = Number(values.amount);
+    const baseAmount = Number(food.baseAmount || 1);
+    const baseUnit = food.baseUnit || 'portion';
+    const unit = values.unit || 'portion';
+    if (!Number.isFinite(amount) || amount <= 0 || unit !== baseUnit) return null;
+    const factor = baseAmount / amount;
+    const result = {};
+    NUTRIENT_KEYS.forEach(key => {
+      result[key] = values[key] == null ? null : Number(values[key]) * factor;
+    });
+    return result;
   }
 
   function sameNutrients(food, values) {
-    return sameValue(food.calories, values.calories) &&
-      sameValue(food.protein, values.protein) &&
-      sameValue(food.fiber, values.fiber);
+    const expected = scaledFoodValues(food, values.amount, values.unit);
+    if (!expected) return false;
+    return NUTRIENT_KEYS.every(key => {
+      if (expected[key] == null && values[key] == null) return true;
+      if (expected[key] == null || values[key] == null) return false;
+      return Math.abs(Number(expected[key]) - Number(values[key])) <= 0.011;
+    });
+  }
+
+  function assignFoodNutrientsFromEntry(food, values, keepBase = false) {
+    const normalized = keepBase ? valuesAtFoodBase(food, values) : null;
+    if (normalized) {
+      NUTRIENT_KEYS.forEach(key => { food[key] = normalized[key]; });
+    } else {
+      NUTRIENT_KEYS.forEach(key => { food[key] = values[key]; });
+      food.baseAmount = values.amount || 1;
+      food.baseUnit = values.unit || 'portion';
+    }
   }
 
   function icon(name) {
     const map = {
       settings: '⚙', calendar: '▣', prev: '‹', next: '›', flame: '♨', protein: '💪', leaf: '♧', clock: '◷',
       plus: '＋', home: '⌂', recipe: '▤', fasting: '☾', stats: '▥', back: '←', edit: '✎', trash: '♲',
-      food: '♜', target: '◎', rocket: '↗', star: '★', starEmpty: '☆', recent: '◷', search: '⌕', list: '☷'
+      food: '♜', scale: '↔', drop: '◒', carbs: '◇', target: '◎', rocket: '↗', star: '★', starEmpty: '☆', recent: '◷', search: '⌕', list: '☷'
     };
     return map[name] || '•';
   }
@@ -254,8 +353,10 @@
       sum.calories += Number(e.calories || 0);
       sum.protein += Number(e.protein || 0);
       sum.fiber += Number(e.fiber || 0);
+      sum.fat += Number(e.fat || 0);
+      sum.carbohydrates += Number(e.carbohydrates || 0);
       return sum;
-    }, { calories: 0, protein: 0, fiber: 0 });
+    }, { calories: 0, protein: 0, fiber: 0, fat: 0, carbohydrates: 0 });
   }
 
   function progress(value, target) {
@@ -285,6 +386,14 @@
         ${summaryCard('protein', icon('protein'), `<strong>Protein ${fmt(totals.protein)}</strong><span>/ ${fmt(state.settings.dailyProtein)} g</span>`, progress(totals.protein, state.settings.dailyProtein))}
         ${summaryCard('fiber', icon('leaf'), `<strong>Ballaststoffe ${fmt(totals.fiber)}</strong><span>g</span>`, Math.min(100, totals.fiber * 3))}
       </section>
+
+      <details class="secondary-nutrients">
+        <summary>Weitere Nährwerte</summary>
+        <div class="secondary-nutrient-grid">
+          <div><span>${icon('drop')}</span><small>Fett</small><strong>${fmt(totals.fat)} g</strong></div>
+          <div><span>${icon('carbs')}</span><small>Kohlenhydrate</small><strong>${fmt(totals.carbohydrates)} g</strong></div>
+        </div>
+      </details>
 
       ${entries.length ? `
         <div class="section-title">${icon('clock')} Einträge</div>
@@ -317,9 +426,10 @@
     const parts = [`${fmt(e.calories, 0)} kcal`];
     if (e.protein != null) parts.push(`${fmt(e.protein)} g Protein`);
     if (e.fiber != null) parts.push(`${fmt(e.fiber)} g Ballaststoffe`);
+    const quantity = e.amount != null ? `<span class="entry-quantity">${esc(amountLabel(e.amount, e.unit))}</span>` : '';
     return `<button class="entry-card" data-entry-id="${esc(e.id)}">
       <span class="time-chip" style="background:${palette[index % palette.length]}">${esc(e.time)}</span>
-      <span class="entry-main"><strong>${esc(e.name)}</strong><span class="entry-sub">${parts.join(' · ')}</span></span>
+      <span class="entry-main"><strong>${esc(e.name)}</strong>${quantity}<span class="entry-sub">${parts.join(' · ')}</span></span>
       <span class="chev">›</span>
     </button>`;
   }
@@ -374,23 +484,52 @@
   function renderFoodForm(target = app) {
     const editing = state.editingId ? state.entries.find(e => e.id === state.editingId) : null;
     const selectedFood = !editing ? getSelectedFood() : null;
-    const initial = editing || (selectedFood ? {
+    const linkedTemplate = editing?.source === 'savedFood' && editing.foodId ? state.savedFoods.find(f => f.id === editing.foodId) : null;
+    const scalableFood = selectedFood || linkedTemplate || null;
+    const initial = editing ? {
+      ...editing,
+      amount: editing.amount ?? (scalableFood?.baseAmount ?? 1),
+      unit: editing.unit ?? (scalableFood?.baseUnit ?? 'portion'),
+      fat: editing.fat ?? null,
+      carbohydrates: editing.carbohydrates ?? null
+    } : (selectedFood ? {
       name: selectedFood.name,
       calories: selectedFood.calories,
       protein: selectedFood.protein,
       fiber: selectedFood.fiber,
+      fat: selectedFood.fat,
+      carbohydrates: selectedFood.carbohydrates,
+      amount: selectedFood.baseAmount || 1,
+      unit: selectedFood.baseUnit || 'portion',
       date: state.selectedDate,
       time: nowTime()
-    } : { name: '', calories: '', protein: '', fiber: '', date: state.selectedDate, time: nowTime() });
+    } : {
+      name: '', calories: '', protein: '', fiber: '', fat: '', carbohydrates: '',
+      amount: 1, unit: 'portion', date: state.selectedDate, time: nowTime()
+    });
 
     const standalone = target === app;
+    const unitOptions = ['portion', 'g', 'ml', 'piece'].map(unit => `<option value="${unit}" ${initial.unit === unit ? 'selected' : ''}>${unitLabel(unit, 2)}</option>`).join('');
+    const extraOpen = initial.fat != null || initial.carbohydrates != null ? ' open' : '';
+    const quantityHint = scalableFood
+      ? `<p class="input-help scaling-help">Automatische Berechnung auf Basis von ${esc(amountLabel(scalableFood.baseAmount || 1, scalableFood.baseUnit || 'portion'))}. Die Einheit bleibt dabei gleich.</p>`
+      : `<p class="input-help">Für eine persönliche Standardportion kannst du „1 Portion“ unverändert lassen.</p>`;
+
     const formMarkup = `${editing ? `<div class="info-banner">${icon('edit')} <span>Du bearbeitest einen bestehenden Eintrag.</span></div>` : ''}
-      ${selectedFood ? `<div class="selected-template"><span>${icon('star')}</span><div><small>Aus gespeicherten Lebensmitteln</small><strong>${esc(selectedFood.name)}</strong></div><button type="button" id="clear-template" aria-label="Vorlage entfernen">×</button></div>` : ''}
+      ${selectedFood ? `<div class="selected-template"><span>${icon('star')}</span><div><small>Aus gespeicherten Lebensmitteln · ${esc(amountLabel(selectedFood.baseAmount || 1, selectedFood.baseUnit || 'portion'))}</small><strong>${esc(selectedFood.name)}</strong></div><button type="button" id="clear-template" aria-label="Vorlage entfernen">×</button></div>` : ''}
       <form id="food-form" class="form-card">
         ${fieldRow(icon('food'), 'Essen', `<textarea id="name" autocomplete="off" placeholder="z. B. Roggenbrot mit Käse">${esc(initial.name)}</textarea><div id="suggestions" class="suggestions" aria-live="polite"></div><p class="input-help">Ab zwei Zeichen zeigt Mampfo passende gespeicherte Lebensmittel an.</p>`)}
-        ${fieldRow(icon('flame'), 'Kalorien (kcal)', `<input id="calories" type="text" inputmode="decimal" value="${esc(initial.calories)}" placeholder="0">`)}
+        ${fieldRow(icon('scale'), 'Menge', `<div class="amount-unit-row"><input id="amount" type="text" inputmode="decimal" value="${initial.amount ?? 1}" placeholder="1"><select id="unit" ${scalableFood ? 'disabled' : ''} aria-label="Einheit">${unitOptions}</select></div>${quantityHint}`)}
+        ${fieldRow(icon('flame'), 'Kalorien (kcal)', `<input id="calories" type="text" inputmode="decimal" value="${initial.calories ?? ''}" placeholder="0">`)}
         ${fieldRow(icon('protein'), 'Protein (g)', `<input id="protein" type="text" inputmode="decimal" value="${initial.protein ?? ''}" placeholder="optional">`)}
         ${fieldRow(icon('leaf'), 'Ballaststoffe (g)', `<input id="fiber" type="text" inputmode="decimal" value="${initial.fiber ?? ''}" placeholder="optional">`)}
+        <details class="extra-nutrients"${extraOpen}>
+          <summary>Weitere Nährwerte</summary>
+          <div class="extra-nutrient-fields">
+            ${fieldRow(icon('drop'), 'Fett (g)', `<input id="fat" type="text" inputmode="decimal" value="${initial.fat ?? ''}" placeholder="optional">`)}
+            ${fieldRow(icon('carbs'), 'Kohlenhydrate (g)', `<input id="carbohydrates" type="text" inputmode="decimal" value="${initial.carbohydrates ?? ''}" placeholder="optional">`)}
+          </div>
+        </details>
         ${fieldRow(icon('calendar'), 'Datum', `<input id="date" type="date" value="${esc(initial.date)}">`)}
         ${fieldRow(icon('clock'), 'Uhrzeit', `<input id="time" type="time" value="${esc(initial.time)}">`)}
         ${editing ? `<div id="entry-food-link-area" class="entry-food-link-area">${entryFoodLinkMarkup(editing)}</div>` : ''}
@@ -423,11 +562,22 @@
         state.selectedSavedFoodId = null;
         const chip = document.querySelector('.selected-template');
         if (chip) chip.remove();
+        const unitSelect = document.getElementById('unit');
+        if (unitSelect) unitSelect.disabled = false;
       }
       updateSuggestions(nameInput.value);
     });
     nameInput.addEventListener('focus', () => updateSuggestions(nameInput.value));
     nameInput.addEventListener('blur', () => window.setTimeout(() => { const box = document.getElementById('suggestions'); if (box) box.innerHTML = ''; }, 180));
+
+    if (scalableFood) {
+      const amountInput = document.getElementById('amount');
+      amountInput.addEventListener('input', () => {
+        if (normalizeName(document.getElementById('name').value) !== normalizeName(scalableFood.name)) return;
+        if (!editing && state.selectedSavedFoodId !== scalableFood.id) return;
+        applyFoodScalingToForm(scalableFood);
+      });
+    }
 
     document.getElementById('food-form').addEventListener('submit', handleFoodSubmit);
     if (editing) {
@@ -435,6 +585,19 @@
       bindEntryFoodLink(editing);
     }
     updateSuggestions(nameInput.value);
+  }
+
+  function applyFoodScalingToForm(food) {
+    const amount = parseNum(document.getElementById('amount')?.value);
+    const unit = document.getElementById('unit')?.value || food.baseUnit || 'portion';
+    if (amount == null || amount < 0) return;
+    const values = scaledFoodValues(food, amount, unit);
+    if (!values) return;
+    NUTRIENT_KEYS.forEach(key => {
+      const input = document.getElementById(key);
+      if (!input) return;
+      input.value = values[key] == null ? '' : String(Math.round(values[key] * 100) / 100).replace('.', ',');
+    });
   }
 
   function entryFoodLinkMarkup(entry) {
@@ -473,8 +636,10 @@
       calories: values.calories,
       protein: values.protein,
       fiber: values.fiber,
-      fat: null,
-      carbohydrates: null,
+      fat: values.fat,
+      carbohydrates: values.carbohydrates,
+      baseAmount: values.amount || 1,
+      baseUnit: values.unit || 'portion',
       favorite: false,
       usageCount: 0,
       lastUsedAt: null,
@@ -504,7 +669,7 @@
       <div class="modal-icon sage">${icon('star')}</div>
       <h2 id="history-save-food-title">Als Lebensmittel speichern?</h2>
       <p>„${esc(values.name)}“ wird zu deinen gespeicherten Lebensmitteln hinzugefügt.</p>
-      <div class="compare-box single"><div><small>Aktuelle Werte</small><strong>${fmt(values.calories, 0)} kcal</strong><span>${values.protein != null ? `${fmt(values.protein)} g Protein` : 'Protein offen'} · ${values.fiber != null ? `${fmt(values.fiber)} g Ballaststoffe` : 'Ballaststoffe offen'}</span></div></div>
+      <div class="compare-box single"><div><small>Aktuelle Werte · ${esc(amountLabel(values.amount, values.unit))}</small><strong>${fmt(values.calories, 0)} kcal</strong><span>${values.protein != null ? `${fmt(values.protein)} g Protein` : 'Protein offen'} · ${values.fiber != null ? `${fmt(values.fiber)} g Ballaststoffe` : 'Ballaststoffe offen'}${values.fat != null ? ` · ${fmt(values.fat)} g Fett` : ''}${values.carbohydrates != null ? ` · ${fmt(values.carbohydrates)} g Kohlenhydrate` : ''}</span></div></div>
       <p class="modal-note">Änderungen im Bearbeitungsformular werden erst mit „Änderungen speichern“ in den Tagebucheintrag übernommen.</p>
       <div class="modal-actions"><button class="primary-button" id="confirm-history-save-food">Speichern</button><button class="secondary-button" id="cancel-history-save-food">Abbrechen</button></div>
     </div></div>`;
@@ -523,8 +688,8 @@
       <h2 id="history-existing-food-title">Lebensmittel bereits vorhanden</h2>
       <p>Für „${esc(food.name)}“ sind andere Nährwerte gespeichert.</p>
       <div class="compare-box">
-        <div><small>Gespeichert</small><strong>${fmt(food.calories, 0)} kcal</strong><span>${food.protein != null ? `${fmt(food.protein)} g Protein` : 'Protein offen'} · ${food.fiber != null ? `${fmt(food.fiber)} g Ballaststoffe` : 'Ballaststoffe offen'}</span></div>
-        <div><small>Dieser Eintrag</small><strong>${fmt(values.calories, 0)} kcal</strong><span>${values.protein != null ? `${fmt(values.protein)} g Protein` : 'Protein offen'} · ${values.fiber != null ? `${fmt(values.fiber)} g Ballaststoffe` : 'Ballaststoffe offen'}</span></div>
+        <div><small>Gespeichert · ${esc(amountLabel(food.baseAmount || 1, food.baseUnit || 'portion'))}</small><strong>${fmt(food.calories, 0)} kcal</strong><span>${food.protein != null ? `${fmt(food.protein)} g Protein` : 'Protein offen'} · ${food.fiber != null ? `${fmt(food.fiber)} g Ballaststoffe` : 'Ballaststoffe offen'}</span></div>
+        <div><small>Dieser Eintrag · ${esc(amountLabel(values.amount, values.unit))}</small><strong>${fmt(values.calories, 0)} kcal</strong><span>${values.protein != null ? `${fmt(values.protein)} g Protein` : 'Protein offen'} · ${values.fiber != null ? `${fmt(values.fiber)} g Ballaststoffe` : 'Ballaststoffe offen'}</span></div>
       </div>
       <p class="modal-note">Der Tagebucheintrag selbst bleibt unverändert, bis du „Änderungen speichern“ wählst.</p>
       <div class="modal-actions">
@@ -542,9 +707,7 @@
     };
     document.getElementById('history-update-food').onclick = () => {
       food.name = values.name;
-      food.calories = values.calories;
-      food.protein = values.protein;
-      food.fiber = values.fiber;
+      assignFoodNutrientsFromEntry(food, values, true);
       food.updatedAt = new Date().toISOString();
       linkHistoricalEntryToFood(entry, food);
       modalRoot.innerHTML = '';
@@ -590,7 +753,7 @@
     if (food.fiber != null) parts.push(`${fmt(food.fiber)} g Ballaststoffe`);
     return `<button type="button" class="suggestion-card" data-suggestion-id="${esc(food.id)}">
       <span class="suggestion-star">${food.favorite ? icon('star') : icon('starEmpty')}</span>
-      <span><strong>${esc(food.name)}</strong><small>${parts.join(' · ')}</small></span>
+      <span><strong>${esc(food.name)}</strong><small>${esc(amountLabel(food.baseAmount || 1, food.baseUnit || 'portion'))} · ${parts.join(' · ')}</small></span>
     </button>`;
   }
 
@@ -605,9 +768,13 @@
   function formValues() {
     return {
       name: document.getElementById('name').value.trim(),
+      amount: parseNum(document.getElementById('amount').value),
+      unit: document.getElementById('unit').value,
       calories: parseNum(document.getElementById('calories').value),
       protein: parseNum(document.getElementById('protein').value),
       fiber: parseNum(document.getElementById('fiber').value),
+      fat: parseNum(document.getElementById('fat').value),
+      carbohydrates: parseNum(document.getElementById('carbohydrates').value),
       date: document.getElementById('date').value,
       time: document.getElementById('time').value
     };
@@ -615,9 +782,11 @@
 
   function validateFoodValues(values) {
     if (!values.name) return 'Bitte eine Bezeichnung eingeben.';
+    if (values.amount == null || values.amount <= 0) return 'Bitte eine gültige Menge eingeben.';
+    if (!['portion', 'g', 'ml', 'piece'].includes(values.unit)) return 'Bitte eine gültige Einheit auswählen.';
     if (values.calories == null || values.calories < 0) return 'Bitte gültige Kalorien eingeben.';
     if (!values.date || !values.time) return 'Bitte Datum und Uhrzeit angeben.';
-    if ((values.protein != null && values.protein < 0) || (values.fiber != null && values.fiber < 0)) return 'Nährwerte dürfen nicht negativ sein.';
+    if ([values.protein, values.fiber, values.fat, values.carbohydrates].some(value => value != null && value < 0)) return 'Nährwerte dürfen nicht negativ sein.';
     return null;
   }
 
@@ -646,8 +815,6 @@
     const entry = {
       id: uuid(),
       ...values,
-      fat: null,
-      carbohydrates: null,
       source: 'manual',
       foodId: null,
       createdAt: now,
@@ -703,7 +870,7 @@
     modalRoot.innerHTML = `<div class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="save-food-title"><div class="modal">
       <div class="modal-icon sage">${icon('star')}</div>
       <h2 id="save-food-title">Für später speichern?</h2>
-      <p><strong>${esc(entry.name)}</strong><br>${fmt(entry.calories, 0)} kcal${entry.protein != null ? ` · ${fmt(entry.protein)} g Protein` : ''}${entry.fiber != null ? ` · ${fmt(entry.fiber)} g Ballaststoffe` : ''}</p>
+      <p><strong>${esc(entry.name)}</strong><br><span class="modal-quantity">${esc(amountLabel(entry.amount, entry.unit))}</span><br>${fmt(entry.calories, 0)} kcal${entry.protein != null ? ` · ${fmt(entry.protein)} g Protein` : ''}${entry.fiber != null ? ` · ${fmt(entry.fiber)} g Ballaststoffe` : ''}${entry.fat != null ? ` · ${fmt(entry.fat)} g Fett` : ''}${entry.carbohydrates != null ? ` · ${fmt(entry.carbohydrates)} g Kohlenhydrate` : ''}</p>
       <div class="modal-actions"><button class="primary-button" id="save-new-food">Speichern</button><button class="secondary-button" id="skip-new-food">Nein</button></div>
     </div></div>`;
 
@@ -716,8 +883,10 @@
         calories: entry.calories,
         protein: entry.protein,
         fiber: entry.fiber,
-        fat: null,
-        carbohydrates: null,
+        fat: entry.fat,
+        carbohydrates: entry.carbohydrates,
+        baseAmount: entry.amount || 1,
+        baseUnit: entry.unit || 'portion',
         favorite: false,
         usageCount: 1,
         lastUsedAt: localDateTimeISO(entry.date, entry.time),
@@ -737,8 +906,8 @@
       <h2 id="update-food-title">Gespeichertes Lebensmittel aktualisieren?</h2>
       <p>Für „${esc(food.name)}“ sind bereits andere Nährwerte gespeichert.</p>
       <div class="compare-box">
-        <div><small>Gespeichert</small><strong>${fmt(food.calories, 0)} kcal</strong><span>${food.protein != null ? `${fmt(food.protein)} g Protein` : 'Protein offen'} · ${food.fiber != null ? `${fmt(food.fiber)} g Ballaststoffe` : 'Ballaststoffe offen'}</span></div>
-        <div><small>Dieser Eintrag</small><strong>${fmt(entry.calories, 0)} kcal</strong><span>${entry.protein != null ? `${fmt(entry.protein)} g Protein` : 'Protein offen'} · ${entry.fiber != null ? `${fmt(entry.fiber)} g Ballaststoffe` : 'Ballaststoffe offen'}</span></div>
+        <div><small>Gespeichert · ${esc(amountLabel(food.baseAmount || 1, food.baseUnit || 'portion'))}</small><strong>${fmt(food.calories, 0)} kcal</strong><span>${food.protein != null ? `${fmt(food.protein)} g Protein` : 'Protein offen'} · ${food.fiber != null ? `${fmt(food.fiber)} g Ballaststoffe` : 'Ballaststoffe offen'}</span></div>
+        <div><small>Dieser Eintrag · ${esc(amountLabel(entry.amount, entry.unit))}</small><strong>${fmt(entry.calories, 0)} kcal</strong><span>${entry.protein != null ? `${fmt(entry.protein)} g Protein` : 'Protein offen'} · ${entry.fiber != null ? `${fmt(entry.fiber)} g Ballaststoffe` : 'Ballaststoffe offen'}</span></div>
       </div>
       <div class="modal-actions"><button class="primary-button" id="update-saved-food">Gespeichertes Lebensmittel aktualisieren</button><button class="secondary-button" id="one-off-food">Nur diesen Eintrag verwenden</button></div>
     </div></div>`;
@@ -753,9 +922,7 @@
     };
     document.getElementById('update-saved-food').onclick = () => {
       food.name = entry.name;
-      food.calories = entry.calories;
-      food.protein = entry.protein;
-      food.fiber = entry.fiber;
+      assignFoodNutrientsFromEntry(food, entry, true);
       food.updatedAt = new Date().toISOString();
       if (!selectedWasUsed) registerFoodUse(food, entry);
       entry.source = 'savedFood';
@@ -800,13 +967,14 @@
     const parts = [`${fmt(food.calories, 0)} kcal`];
     if (food.protein != null) parts.push(`${fmt(food.protein)} g Protein`);
     if (food.fiber != null) parts.push(`${fmt(food.fiber)} g Ballaststoffe`);
+    const base = amountLabel(food.baseAmount || 1, food.baseUnit || 'portion');
     let meta = '';
     if (options.showLastUsed && food.lastUsedAt) meta = `<span class="food-meta">${esc(lastUsedLabel(food.lastUsedAt))}</span>`;
     if (options.showCount) meta = `<span class="food-meta">${Number(food.usageCount || 0)}× verwendet</span>`;
     return `<article class="saved-food-card">
       <button class="saved-food-main" data-select-food="${esc(food.id)}">
         <strong>${esc(food.name)}</strong>
-        <span>${parts.join(' · ')}</span>
+        <span><b class="food-base">${esc(base)}</b> · ${parts.join(' · ')}</span>
         ${meta}
       </button>
       <button class="favorite-button ${food.favorite ? 'active' : ''}" data-toggle-favorite="${esc(food.id)}" aria-label="Favorit umschalten">${food.favorite ? icon('star') : icon('starEmpty')}</button>
@@ -877,7 +1045,7 @@
         <span class="chev">›</span>
       </button>
 
-      <div class="settings-note">${icon('rocket')}<br>Rezepte, Fasten und Auswertung folgen in späteren Versionen.</div>
+      <div class="settings-note">${icon('rocket')}<br>Mengen sowie Fett und Kohlenhydrate sind jetzt aktiv. Rezepte folgen mit v0.3.2; Fasten und Auswertung später.</div>
       <div class="version">${esc(CFG.appName)} · Version ${esc(CFG.version)}</div>
     </main>${bottomNav('')}`;
 
@@ -917,7 +1085,7 @@
     if (!foods.length) return `<div class="mini-empty compact"><div class="mini-empty-icon">${icon('search')}</div><h3>Keine Treffer</h3><p>Für diese Suche wurde kein gespeichertes Lebensmittel gefunden.</p></div>`;
     return foods.map(food => `<article class="manager-food-card">
       <button class="manager-food-main" data-edit-food="${esc(food.id)}">
-        <span class="manager-food-title"><strong>${esc(food.name)}</strong><small>${fmt(food.calories, 0)} kcal${food.protein != null ? ` · ${fmt(food.protein)} g Protein` : ''}${food.fiber != null ? ` · ${fmt(food.fiber)} g Ballaststoffe` : ''}</small></span>
+        <span class="manager-food-title"><strong>${esc(food.name)}</strong><small>${esc(amountLabel(food.baseAmount || 1, food.baseUnit || 'portion'))} · ${fmt(food.calories, 0)} kcal${food.protein != null ? ` · ${fmt(food.protein)} g Protein` : ''}${food.fiber != null ? ` · ${fmt(food.fiber)} g Ballaststoffe` : ''}</small></span>
         <span class="chev">›</span>
       </button>
       <button class="favorite-button ${food.favorite ? 'active' : ''}" data-manager-favorite="${esc(food.id)}" aria-label="Favorit umschalten">${food.favorite ? icon('star') : icon('starEmpty')}</button>
@@ -936,16 +1104,26 @@
   function renderFoodEdit() {
     const food = state.savedFoods.find(f => f.id === state.editingFoodId);
     if (!food) return setView('foods', { editingFoodId: null });
+    const unitOptions = ['portion', 'g', 'ml', 'piece'].map(unit => `<option value="${unit}" ${food.baseUnit === unit ? 'selected' : ''}>${unitLabel(unit, 2)}</option>`).join('');
+    const extraOpen = food.fat != null || food.carbohydrates != null ? ' open' : '';
 
     app.innerHTML = `<main class="page">
       <header class="topbar"><button class="icon-button" id="food-edit-back" aria-label="Zurück">${icon('back')}</button><h1>Lebensmittel bearbeiten</h1><span style="width:44px"></span></header>
-      <div class="info-banner">${icon('star')} <span>Änderungen gelten nur für zukünftige Einträge. Dein Ernährungstagebuch bleibt unverändert.</span></div>
+      <div class="info-banner">${icon('star')} <span>Die Nährwerte beziehen sich auf die angegebene Bezugsmenge. Änderungen gelten nur für zukünftige Einträge.</span></div>
       <form id="saved-food-form" class="form-card">
         ${fieldRow(icon('food'), 'Name', `<input id="saved-name" type="text" value="${esc(food.name)}" autocomplete="off">`)}
-        ${fieldRow(icon('flame'), 'Kalorien (kcal)', `<input id="saved-calories" type="text" inputmode="decimal" value="${esc(food.calories)}">`)}
+        ${fieldRow(icon('scale'), 'Bezugsmenge', `<div class="amount-unit-row"><input id="saved-base-amount" type="text" inputmode="decimal" value="${food.baseAmount ?? 1}"><select id="saved-base-unit">${unitOptions}</select></div><p class="input-help">Beispiel: 100 g, 250 ml, 1 Stück oder 1 Portion.</p>`)}
+        ${fieldRow(icon('flame'), 'Kalorien (kcal)', `<input id="saved-calories" type="text" inputmode="decimal" value="${food.calories ?? ''}">`)}
         ${fieldRow(icon('protein'), 'Protein (g)', `<input id="saved-protein" type="text" inputmode="decimal" value="${food.protein ?? ''}" placeholder="optional">`)}
         ${fieldRow(icon('leaf'), 'Ballaststoffe (g)', `<input id="saved-fiber" type="text" inputmode="decimal" value="${food.fiber ?? ''}" placeholder="optional">`)}
-        <button type="button" class="favorite-toggle ${food.favorite ? 'active' : ''}" id="food-favorite-toggle">${food.favorite ? icon('star') : icon('starEmpty')} ${food.favorite ? 'Favorit' : 'Als Favorit markieren'}</button>
+        <details class="extra-nutrients"${extraOpen}>
+          <summary>Weitere Nährwerte</summary>
+          <div class="extra-nutrient-fields">
+            ${fieldRow(icon('drop'), 'Fett (g)', `<input id="saved-fat" type="text" inputmode="decimal" value="${food.fat ?? ''}" placeholder="optional">`)}
+            ${fieldRow(icon('carbs'), 'Kohlenhydrate (g)', `<input id="saved-carbohydrates" type="text" inputmode="decimal" value="${food.carbohydrates ?? ''}" placeholder="optional">`)}
+          </div>
+        </details>
+        <button type="button" class="favorite-toggle ${food.favorite ? 'active' : ''}" id="food-favorite-toggle">${food.favorite ? icon('star') : icon('starEmpty')} <span>${food.favorite ? 'Favorit' : 'Als Favorit markieren'}</span></button>
         <div class="form-actions">
           <button class="primary-button" type="submit">Änderungen speichern</button>
           <button class="danger-button" type="button" id="delete-saved-food">${icon('trash')} Lebensmittel löschen</button>
@@ -954,23 +1132,31 @@
     </main>${bottomNav('')}`;
 
     document.getElementById('food-edit-back').onclick = () => setView('foods', { editingFoodId: null });
-    document.getElementById('food-favorite-toggle').onclick = () => {
+    document.getElementById('food-favorite-toggle').onclick = event => {
       food.favorite = !food.favorite;
       food.updatedAt = new Date().toISOString();
       persist();
-      render();
+      event.currentTarget.classList.toggle('active', food.favorite);
+      event.currentTarget.innerHTML = `${food.favorite ? icon('star') : icon('starEmpty')} <span>${food.favorite ? 'Favorit' : 'Als Favorit markieren'}</span>`;
+      showToast(food.favorite ? 'Zu Favoriten hinzugefügt.' : 'Aus Favoriten entfernt.');
     };
     document.getElementById('saved-food-form').addEventListener('submit', e => {
       e.preventDefault();
       const values = {
         name: document.getElementById('saved-name').value.trim(),
+        baseAmount: parseNum(document.getElementById('saved-base-amount').value),
+        baseUnit: document.getElementById('saved-base-unit').value,
         calories: parseNum(document.getElementById('saved-calories').value),
         protein: parseNum(document.getElementById('saved-protein').value),
-        fiber: parseNum(document.getElementById('saved-fiber').value)
+        fiber: parseNum(document.getElementById('saved-fiber').value),
+        fat: parseNum(document.getElementById('saved-fat').value),
+        carbohydrates: parseNum(document.getElementById('saved-carbohydrates').value)
       };
       if (!values.name) return showToast('Bitte einen Namen eingeben.');
+      if (values.baseAmount == null || values.baseAmount <= 0) return showToast('Bitte eine gültige Bezugsmenge eingeben.');
+      if (!['portion', 'g', 'ml', 'piece'].includes(values.baseUnit)) return showToast('Bitte eine gültige Einheit auswählen.');
       if (values.calories == null || values.calories < 0) return showToast('Bitte gültige Kalorien eingeben.');
-      if ((values.protein != null && values.protein < 0) || (values.fiber != null && values.fiber < 0)) return showToast('Nährwerte dürfen nicht negativ sein.');
+      if ([values.protein, values.fiber, values.fat, values.carbohydrates].some(value => value != null && value < 0)) return showToast('Nährwerte dürfen nicht negativ sein.');
       const duplicate = state.savedFoods.find(f => f.id !== food.id && normalizeName(f.name) === normalizeName(values.name));
       if (duplicate) return showToast('Ein Lebensmittel mit diesem Namen ist bereits gespeichert.');
       Object.assign(food, values, { updatedAt: new Date().toISOString() });

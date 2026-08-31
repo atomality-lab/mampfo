@@ -585,3 +585,122 @@ button { cursor: pointer; }
   line-height: 1.45;
 }
 .compare-box.single { grid-template-columns: 1fr; }
+
+/* v0.3.1 – Mengen, Einheiten und zusätzliche Nährwerte */
+.amount-unit-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(118px, .8fr);
+  gap: 8px;
+}
+.field select {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid #dcded9;
+  background: #fff;
+  color: var(--text);
+  border-radius: 12px;
+  padding: 10px 34px 10px 12px;
+  outline: none;
+  font-size: .96rem;
+}
+.field select:focus {
+  border-color: var(--sage);
+  box-shadow: 0 0 0 3px rgba(150,173,140,.18);
+}
+.field select:disabled {
+  color: var(--text-2);
+  background: var(--surface-soft);
+  opacity: 1;
+}
+.scaling-help { color: var(--sage-dark); }
+
+.extra-nutrients,
+.secondary-nutrients {
+  border: 1px solid var(--line);
+  border-radius: 17px;
+  background: rgba(255,255,255,.64);
+  overflow: hidden;
+}
+.extra-nutrients { margin: 4px 0 14px; }
+.extra-nutrients summary,
+.secondary-nutrients summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 12px 14px;
+  font-size: .84rem;
+  font-weight: 800;
+  color: var(--text-2);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.extra-nutrients summary::-webkit-details-marker,
+.secondary-nutrients summary::-webkit-details-marker { display: none; }
+.extra-nutrients summary::after,
+.secondary-nutrients summary::after {
+  content: '⌄';
+  color: var(--text-3);
+  font-size: 1rem;
+  transform-origin: center;
+}
+.extra-nutrients[open] summary::after,
+.secondary-nutrients[open] summary::after { transform: rotate(180deg); }
+.extra-nutrient-fields {
+  padding: 4px 12px 2px;
+  border-top: 1px solid var(--line);
+  background: var(--surface-soft);
+}
+.extra-nutrient-fields .form-row:last-child { margin-bottom: 10px; }
+
+.secondary-nutrients {
+  margin: -4px 0 18px;
+  background: linear-gradient(135deg, rgba(239,245,247,.82), rgba(255,255,255,.72));
+}
+.secondary-nutrient-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  padding: 0 10px 10px;
+}
+.secondary-nutrient-grid > div {
+  display: grid;
+  grid-template-columns: 34px 1fr;
+  grid-template-rows: auto auto;
+  column-gap: 8px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: rgba(255,255,255,.78);
+}
+.secondary-nutrient-grid > div > span {
+  grid-row: 1 / 3;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--bluegray-pale);
+  color: #5f7580;
+}
+.secondary-nutrient-grid small { color: var(--text-3); font-size: .68rem; }
+.secondary-nutrient-grid strong { font-size: .92rem; }
+.entry-quantity {
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  margin: 0 0 3px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--surface-soft);
+  color: var(--text-2);
+  font-size: .67rem;
+  font-weight: 730;
+}
+.food-base { color: var(--sage-dark); font-weight: 760; }
+.modal-quantity { color: var(--sage-dark); font-size: .84rem; font-weight: 760; }
+
+@media (max-width: 380px) {
+  .amount-unit-row { grid-template-columns: 1fr; }
+}
