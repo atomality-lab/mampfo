@@ -1,6 +1,17 @@
-# Mampfo v0.3.1
+# Mampfo v0.3.1.1
 
 Mampfo ist eine persönliche, lokal gespeicherte PWA zum Ernährungstracking.
+
+
+## Neu in v0.3.1.1
+
+- verknüpfte Tagebucheinträge werden beim Bearbeiten gegen ihre gespeicherte Lebensmittelvorlage geprüft
+- Änderungen an Name oder Nährwerten lösen eine Entscheidung aus, statt die alte Verknüpfung still beizubehalten
+- Optionen: nur Tagebucheintrag ändern, gespeichertes Lebensmittel aktualisieren oder bei geändertem Namen als neues Lebensmittel speichern
+- bei „Nur Tagebucheintrag ändern“ wird `foodId` entfernt; ein ursprüngliches `source = savedFood` wird zu `manual`
+- Änderungen nur an Datum/Uhrzeit oder eine korrekt skalierte Mengenänderung behalten die Verknüpfung bei
+- bereits aus v0.3.1 vorhandene abweichende Verknüpfungen werden nicht mehr mit grünem Haken angezeigt
+- bei Wechsel auf ein neues Lebensmittel werden Nutzungszähler der betroffenen Vorlagen neu aus den Verknüpfungen berechnet
 
 ## Neu in v0.3.1
 
@@ -57,7 +68,7 @@ Bestehende Tagebucheinträge erhalten lediglich die neuen optionalen Felder `amo
 
 Es gibt keinen Build-Prozess und keine externen Abhängigkeiten. Den Inhalt dieses Ordners direkt in das bestehende Repository kopieren und die vorhandenen Dateien ersetzen.
 
-Der Service Worker verwendet für v0.3.1 einen neuen Cache-Namen. Falls ein Gerät zunächst noch die alte Version zeigt, die installierte PWA einmal vollständig schließen und erneut öffnen.
+Der Service Worker verwendet für v0.3.1.1 einen neuen Cache-Namen. Falls ein Gerät zunächst noch die alte Version zeigt, die installierte PWA einmal vollständig schließen und erneut öffnen.
 
 ## Lokaler Test
 
@@ -79,4 +90,4 @@ Mampfo speichert die Daten weiterhin ausschließlich lokal im jeweiligen Browser
 
 ## Version
 
-0.3.1
+0.3.1.1

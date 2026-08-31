@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const CFG = window.APP_CONFIG || { appName: 'Mampfo', version: '0.3.1' };
+  const CFG = window.APP_CONFIG || { appName: 'Mampfo', version: '0.3.1.1' };
   const STORAGE = {
     settings: 'mampfo.settings.v2',
     entries: 'mampfo.entries.v2',
@@ -251,6 +251,17 @@
     });
   }
 
+  function entryMatchesFood(food, values) {
+    if (!food || !values) return false;
+    if (normalizeName(food.name) !== normalizeName(values.name)) return false;
+    const comparable = {
+      ...values,
+      amount: values.amount ?? food.baseAmount ?? 1,
+      unit: values.unit ?? food.baseUnit ?? 'portion'
+    };
+    return sameNutrients(food, comparable);
+  }
+
   function assignFoodNutrientsFromEntry(food, values, keepBase = false) {
     const normalized = keepBase ? valuesAtFoodBase(food, values) : null;
     if (normalized) {
@@ -484,7 +495,7 @@
   function renderFoodForm(target = app) {
     const editing = state.editingId ? state.entries.find(e => e.id === state.editingId) : null;
     const selectedFood = !editing ? getSelectedFood() : null;
-    const linkedTemplate = editing?.source === 'savedFood' && editing.foodId ? state.savedFoods.find(f => f.id === editing.foodId) : null;
+    const linkedTemplate = editing?.foodId ? state.savedFoods.find(f => f.id === editing.foodId) : null;
     const scalableFood = selectedFood || linkedTemplate || null;
     const initial = editing ? {
       ...editing,
@@ -583,6 +594,15 @@
     if (editing) {
       document.getElementById('delete-entry').onclick = () => confirmDeleteEntry(editing);
       bindEntryFoodLink(editing);
+      if (editing.foodId) {
+        ['name', 'amount', 'unit', 'calories', 'protein', 'fiber', 'fat', 'carbohydrates'].forEach(id => {
+          const control = document.getElementById(id);
+          if (!control) return;
+          const refresh = () => refreshEntryFoodLink(editing, formValues());
+          control.addEventListener('input', refresh);
+          control.addEventListener('change', refresh);
+        });
+      }
     }
     updateSuggestions(nameInput.value);
   }
@@ -600,10 +620,14 @@
     });
   }
 
-  function entryFoodLinkMarkup(entry) {
+  function entryFoodLinkMarkup(entry, previewValues = null) {
     const linkedFood = entry.foodId ? state.savedFoods.find(food => food.id === entry.foodId) : null;
     if (linkedFood) {
-      return `<div class="linked-food-status"><span class="linked-food-icon">✓</span><span><small>In Lebensmitteln gespeichert</small><strong>${esc(linkedFood.name)}</strong></span></div>`;
+      const matches = entryMatchesFood(linkedFood, previewValues || entry);
+      if (matches) {
+        return `<div class="linked-food-status"><span class="linked-food-icon">✓</span><span><small>In Lebensmitteln gespeichert</small><strong>${esc(linkedFood.name)}</strong></span></div>`;
+      }
+      return `<div class="linked-food-status linked-food-status-warning"><span class="linked-food-icon">!</span><span><small>Eintrag weicht vom gespeicherten Lebensmittel ab</small><strong>${esc(linkedFood.name)}</strong></span></div><p class="catalog-help">Beim Speichern entscheidest du, ob nur der Tagebucheintrag geändert, die Vorlage aktualisiert oder ein neues Lebensmittel angelegt wird.</p>`;
     }
     return `<button type="button" class="save-entry-food-button" id="save-entry-as-food">${icon('starEmpty')} <span>In Lebensmitteln speichern</span></button><p class="catalog-help">Übernimmt die aktuell eingetragenen Nährwerte als wiederverwendbares Lebensmittel.</p>`;
   }
@@ -613,10 +637,10 @@
     if (button) button.onclick = () => saveEditedEntryAsFood(entry);
   }
 
-  function refreshEntryFoodLink(entry) {
+  function refreshEntryFoodLink(entry, previewValues = null) {
     const area = document.getElementById('entry-food-link-area');
     if (!area) return;
-    area.innerHTML = entryFoodLinkMarkup(entry);
+    area.innerHTML = entryFoodLinkMarkup(entry, previewValues);
     bindEntryFoodLink(entry);
   }
 
@@ -800,6 +824,10 @@
     const now = new Date().toISOString();
 
     if (editing) {
+      const linkedFood = editing.foodId ? state.savedFoods.find(food => food.id === editing.foodId) : null;
+      if (linkedFood && !entryMatchesFood(linkedFood, values)) {
+        return promptLinkedEntryEdit(editing, linkedFood, values, now);
+      }
       Object.assign(editing, values, { updatedAt: now });
       state.selectedDate = values.date;
       state.editingId = null;
@@ -846,6 +874,108 @@
 
     persist();
     promptSaveNewFood(entry);
+  }
+
+  function recalculateFoodUse(foodId) {
+    if (!foodId) return;
+    const food = state.savedFoods.find(item => item.id === foodId);
+    if (!food) return;
+    const linkedEntries = state.entries.filter(entry => entry.foodId === foodId);
+    food.usageCount = linkedEntries.length;
+    food.lastUsedAt = linkedEntries.reduce((latest, entry) => {
+      const usedAt = localDateTimeISO(entry.date, entry.time);
+      return !latest || usedAt > latest ? usedAt : latest;
+    }, null);
+  }
+
+  function finishEditedEntry(entry, message) {
+    state.selectedDate = entry.date;
+    state.editingId = null;
+    modalRoot.innerHTML = '';
+    persist();
+    showToast(message);
+    state.view = 'today';
+    window.setTimeout(render, 50);
+  }
+
+  function promptLinkedEntryEdit(entry, linkedFood, values, now) {
+    const nameChanged = normalizeName(values.name) !== normalizeName(linkedFood.name);
+    const otherWithName = state.savedFoods.find(food => food.id !== linkedFood.id && normalizeName(food.name) === normalizeName(values.name));
+    const newFoodButton = nameChanged && !otherWithName
+      ? `<button class="secondary-button" id="save-linked-as-new">Als neues Lebensmittel speichern</button>`
+      : '';
+    const conflictNote = nameChanged && otherWithName
+      ? `<p class="modal-note">Unter dem Namen „${esc(otherWithName.name)}“ ist bereits ein anderes Lebensmittel gespeichert. Ein neues Lebensmittel mit demselben Namen wird deshalb nicht automatisch angelegt.</p>`
+      : '';
+
+    modalRoot.innerHTML = `<div class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="linked-edit-title"><div class="modal">
+      <div class="modal-icon apricot">${icon('edit')}</div>
+      <h2 id="linked-edit-title">Gespeichertes Lebensmittel ebenfalls ändern?</h2>
+      <p>Dieser Tagebucheintrag ist mit „${esc(linkedFood.name)}“ verknüpft und weicht jetzt von der gespeicherten Vorlage ab.</p>
+      <div class="compare-box">
+        <div><small>Gespeichert · ${esc(amountLabel(linkedFood.baseAmount || 1, linkedFood.baseUnit || 'portion'))}</small><strong>${esc(linkedFood.name)}</strong><span>${fmt(linkedFood.calories, 0)} kcal${linkedFood.protein != null ? ` · ${fmt(linkedFood.protein)} g Protein` : ''}${linkedFood.fiber != null ? ` · ${fmt(linkedFood.fiber)} g Ballaststoffe` : ''}</span></div>
+        <div><small>Geänderter Eintrag · ${esc(amountLabel(values.amount, values.unit))}</small><strong>${esc(values.name)}</strong><span>${fmt(values.calories, 0)} kcal${values.protein != null ? ` · ${fmt(values.protein)} g Protein` : ''}${values.fiber != null ? ` · ${fmt(values.fiber)} g Ballaststoffe` : ''}</span></div>
+      </div>
+      ${conflictNote}
+      <div class="modal-actions">
+        <button class="primary-button" id="update-linked-food">Gespeichertes Lebensmittel aktualisieren</button>
+        ${newFoodButton}
+        <button class="secondary-button" id="edit-entry-only">Nur Tagebucheintrag ändern</button>
+        <button class="secondary-button" id="cancel-linked-edit">Abbrechen</button>
+      </div>
+    </div></div>`;
+
+    document.getElementById('cancel-linked-edit').onclick = () => { modalRoot.innerHTML = ''; };
+
+    document.getElementById('edit-entry-only').onclick = () => {
+      const oldFoodId = entry.foodId;
+      Object.assign(entry, values, { updatedAt: now });
+      entry.foodId = null;
+      if (entry.source === 'savedFood') entry.source = 'manual';
+      recalculateFoodUse(oldFoodId);
+      finishEditedEntry(entry, 'Tagebucheintrag geändert und Verknüpfung gelöst.');
+    };
+
+    document.getElementById('update-linked-food').onclick = () => {
+      if (otherWithName) {
+        showToast(`„${otherWithName.name}“ ist bereits als anderes Lebensmittel gespeichert.`);
+        return;
+      }
+      linkedFood.name = values.name;
+      assignFoodNutrientsFromEntry(linkedFood, values, true);
+      linkedFood.updatedAt = now;
+      Object.assign(entry, values, { updatedAt: now, foodId: linkedFood.id });
+      recalculateFoodUse(linkedFood.id);
+      finishEditedEntry(entry, 'Eintrag und gespeichertes Lebensmittel aktualisiert.');
+    };
+
+    const saveAsNew = document.getElementById('save-linked-as-new');
+    if (saveAsNew) saveAsNew.onclick = () => {
+      const oldFoodId = entry.foodId;
+      const createdAt = new Date().toISOString();
+      const normalizedForNewFood = valuesAtFoodBase(linkedFood, values);
+      const newFood = {
+        id: uuid(),
+        name: values.name,
+        calories: normalizedForNewFood ? normalizedForNewFood.calories : values.calories,
+        protein: normalizedForNewFood ? normalizedForNewFood.protein : values.protein,
+        fiber: normalizedForNewFood ? normalizedForNewFood.fiber : values.fiber,
+        fat: normalizedForNewFood ? normalizedForNewFood.fat : values.fat,
+        carbohydrates: normalizedForNewFood ? normalizedForNewFood.carbohydrates : values.carbohydrates,
+        baseAmount: normalizedForNewFood ? (linkedFood.baseAmount || 1) : (values.amount || 1),
+        baseUnit: normalizedForNewFood ? (linkedFood.baseUnit || 'portion') : (values.unit || 'portion'),
+        favorite: false,
+        usageCount: 0,
+        lastUsedAt: null,
+        createdAt,
+        updatedAt: createdAt
+      };
+      state.savedFoods.push(newFood);
+      Object.assign(entry, values, { updatedAt: now, foodId: newFood.id });
+      recalculateFoodUse(oldFoodId);
+      recalculateFoodUse(newFood.id);
+      finishEditedEntry(entry, 'Eintrag geändert und als neues Lebensmittel gespeichert.');
+    };
   }
 
   function registerFoodUse(food, entry) {

@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.3.1.1 – Verknüpfungslogik beim Bearbeiten
+
+- verknüpfte Tagebucheinträge werden beim Speichern gegen die aktuelle SavedFood-Vorlage geprüft
+- reine Datum-/Uhrzeitänderungen und korrekt skalierte Mengenänderungen behalten die Verknüpfung
+- bei abweichendem Namen oder abweichenden Nährwerten erscheint eine Entscheidungsabfrage
+- „Nur Tagebucheintrag ändern“ löst die `foodId`-Verknüpfung
+- „Gespeichertes Lebensmittel aktualisieren“ übernimmt Name und auf die Bezugsmenge normalisierte Nährwerte in die Vorlage
+- bei geändertem Namen kann der Eintrag als neues Lebensmittel gespeichert werden, ohne die ursprüngliche Vorlage zu überschreiben
+- bereits vorhandene abweichende Verknüpfungen werden mit Warnstatus statt grünem Haken dargestellt
+- Nutzungszähler betroffener Lebensmittel werden beim Umverknüpfen neu berechnet
+- Service-Worker-Cache auf v0.3.1.1 aktualisiert
+
 ## 0.3.1 – Mengen und zusätzliche Nährwerte
 
 - Bezugsmenge für gespeicherte Lebensmittel ergänzt

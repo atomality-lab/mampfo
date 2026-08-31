@@ -704,3 +704,13 @@ button { cursor: pointer; }
 @media (max-width: 380px) {
   .amount-unit-row { grid-template-columns: 1fr; }
 }
+
+/* v0.3.1.1 – abweichende Verknüpfungen sichtbar machen */
+.linked-food-status-warning {
+  border-color: #ead8bb;
+  background: #fff7ea;
+  color: #8a6746;
+}
+.linked-food-status-warning .linked-food-icon {
+  color: #8a6746;
+}
