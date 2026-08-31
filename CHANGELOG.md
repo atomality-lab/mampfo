@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.1 – Alte Einträge nachträglich speichern
+
+- Tagebucheinträge können im Bearbeitungsmodus nachträglich als gespeichertes Lebensmittel übernommen werden
+- identische vorhandene Lebensmittel werden ohne Dublette verknüpft
+- bei abweichenden Nährwerten stehen „Mit vorhandenem Lebensmittel verknüpfen“ und „Gespeichertes Lebensmittel aktualisieren“ zur Auswahl
+- historische Einträge behalten ihre ursprüngliche `source`; die Verknüpfung erfolgt über `foodId`
+- nachträgliche Verknüpfungen fließen in „Zuletzt“ und „Häufig verwendet“ ein
+- beim Löschen eines SavedFoods werden zugehörige `foodId`-Verknüpfungen aus Tagebucheinträgen entfernt
+- Service-Worker-Cache auf v0.2.1 aktualisiert
+
 ## 0.2.0 – Gespeicherte Lebensmittel
 
 - App-Name auf Mampfo festgelegt

@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const CFG = window.APP_CONFIG || { appName: 'Mampfo', version: '0.2.0' };
+  const CFG = window.APP_CONFIG || { appName: 'Mampfo', version: '0.2.1' };
   const STORAGE = {
     settings: 'mampfo.settings.v2',
     entries: 'mampfo.entries.v2',
@@ -393,6 +393,7 @@
         ${fieldRow(icon('leaf'), 'Ballaststoffe (g)', `<input id="fiber" type="text" inputmode="decimal" value="${initial.fiber ?? ''}" placeholder="optional">`)}
         ${fieldRow(icon('calendar'), 'Datum', `<input id="date" type="date" value="${esc(initial.date)}">`)}
         ${fieldRow(icon('clock'), 'Uhrzeit', `<input id="time" type="time" value="${esc(initial.time)}">`)}
+        ${editing ? `<div id="entry-food-link-area" class="entry-food-link-area">${entryFoodLinkMarkup(editing)}</div>` : ''}
         <div class="form-actions">
           <button class="primary-button" type="submit">${editing ? 'Änderungen speichern' : 'Speichern'}</button>
           ${editing ? `<button class="danger-button" type="button" id="delete-entry">${icon('trash')} Eintrag löschen</button>` : ''}
@@ -429,8 +430,126 @@
     nameInput.addEventListener('blur', () => window.setTimeout(() => { const box = document.getElementById('suggestions'); if (box) box.innerHTML = ''; }, 180));
 
     document.getElementById('food-form').addEventListener('submit', handleFoodSubmit);
-    if (editing) document.getElementById('delete-entry').onclick = () => confirmDeleteEntry(editing);
+    if (editing) {
+      document.getElementById('delete-entry').onclick = () => confirmDeleteEntry(editing);
+      bindEntryFoodLink(editing);
+    }
     updateSuggestions(nameInput.value);
+  }
+
+  function entryFoodLinkMarkup(entry) {
+    const linkedFood = entry.foodId ? state.savedFoods.find(food => food.id === entry.foodId) : null;
+    if (linkedFood) {
+      return `<div class="linked-food-status"><span class="linked-food-icon">✓</span><span><small>In Lebensmitteln gespeichert</small><strong>${esc(linkedFood.name)}</strong></span></div>`;
+    }
+    return `<button type="button" class="save-entry-food-button" id="save-entry-as-food">${icon('starEmpty')} <span>In Lebensmitteln speichern</span></button><p class="catalog-help">Übernimmt die aktuell eingetragenen Nährwerte als wiederverwendbares Lebensmittel.</p>`;
+  }
+
+  function bindEntryFoodLink(entry) {
+    const button = document.getElementById('save-entry-as-food');
+    if (button) button.onclick = () => saveEditedEntryAsFood(entry);
+  }
+
+  function refreshEntryFoodLink(entry) {
+    const area = document.getElementById('entry-food-link-area');
+    if (!area) return;
+    area.innerHTML = entryFoodLinkMarkup(entry);
+    bindEntryFoodLink(entry);
+  }
+
+  function linkHistoricalEntryToFood(entry, food) {
+    entry.foodId = food.id;
+    // Die ursprüngliche Herkunft bleibt erhalten (z. B. source = 'manual').
+    registerFoodUse(food, entry);
+    persist();
+    refreshEntryFoodLink(entry);
+  }
+
+  function createFoodFromValues(values, entry) {
+    const now = new Date().toISOString();
+    const food = {
+      id: uuid(),
+      name: values.name,
+      calories: values.calories,
+      protein: values.protein,
+      fiber: values.fiber,
+      fat: null,
+      carbohydrates: null,
+      favorite: false,
+      usageCount: 0,
+      lastUsedAt: null,
+      createdAt: now,
+      updatedAt: now
+    };
+    state.savedFoods.push(food);
+    linkHistoricalEntryToFood(entry, food);
+    return food;
+  }
+
+  function saveEditedEntryAsFood(entry) {
+    const values = formValues();
+    const error = validateFoodValues(values);
+    if (error) return showToast(error);
+
+    const existing = state.savedFoods.find(food => normalizeName(food.name) === normalizeName(values.name));
+    if (existing && sameNutrients(existing, values)) {
+      linkHistoricalEntryToFood(entry, existing);
+      showToast(`„${existing.name}“ ist bereits gespeichert und wurde verknüpft.`);
+      return;
+    }
+
+    if (existing) return promptLinkOrUpdateHistoricalFood(existing, entry, values);
+
+    modalRoot.innerHTML = `<div class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="history-save-food-title"><div class="modal">
+      <div class="modal-icon sage">${icon('star')}</div>
+      <h2 id="history-save-food-title">Als Lebensmittel speichern?</h2>
+      <p>„${esc(values.name)}“ wird zu deinen gespeicherten Lebensmitteln hinzugefügt.</p>
+      <div class="compare-box single"><div><small>Aktuelle Werte</small><strong>${fmt(values.calories, 0)} kcal</strong><span>${values.protein != null ? `${fmt(values.protein)} g Protein` : 'Protein offen'} · ${values.fiber != null ? `${fmt(values.fiber)} g Ballaststoffe` : 'Ballaststoffe offen'}</span></div></div>
+      <p class="modal-note">Änderungen im Bearbeitungsformular werden erst mit „Änderungen speichern“ in den Tagebucheintrag übernommen.</p>
+      <div class="modal-actions"><button class="primary-button" id="confirm-history-save-food">Speichern</button><button class="secondary-button" id="cancel-history-save-food">Abbrechen</button></div>
+    </div></div>`;
+
+    document.getElementById('cancel-history-save-food').onclick = () => { modalRoot.innerHTML = ''; };
+    document.getElementById('confirm-history-save-food').onclick = () => {
+      const food = createFoodFromValues(values, entry);
+      modalRoot.innerHTML = '';
+      showToast(`„${food.name}“ wurde gespeichert und verknüpft.`);
+    };
+  }
+
+  function promptLinkOrUpdateHistoricalFood(food, entry, values) {
+    modalRoot.innerHTML = `<div class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="history-existing-food-title"><div class="modal">
+      <div class="modal-icon apricot">${icon('edit')}</div>
+      <h2 id="history-existing-food-title">Lebensmittel bereits vorhanden</h2>
+      <p>Für „${esc(food.name)}“ sind andere Nährwerte gespeichert.</p>
+      <div class="compare-box">
+        <div><small>Gespeichert</small><strong>${fmt(food.calories, 0)} kcal</strong><span>${food.protein != null ? `${fmt(food.protein)} g Protein` : 'Protein offen'} · ${food.fiber != null ? `${fmt(food.fiber)} g Ballaststoffe` : 'Ballaststoffe offen'}</span></div>
+        <div><small>Dieser Eintrag</small><strong>${fmt(values.calories, 0)} kcal</strong><span>${values.protein != null ? `${fmt(values.protein)} g Protein` : 'Protein offen'} · ${values.fiber != null ? `${fmt(values.fiber)} g Ballaststoffe` : 'Ballaststoffe offen'}</span></div>
+      </div>
+      <p class="modal-note">Der Tagebucheintrag selbst bleibt unverändert, bis du „Änderungen speichern“ wählst.</p>
+      <div class="modal-actions">
+        <button class="primary-button" id="history-update-food">Gespeichertes Lebensmittel aktualisieren</button>
+        <button class="secondary-button" id="history-link-food">Mit vorhandenem Lebensmittel verknüpfen</button>
+        <button class="secondary-button" id="history-cancel-food">Abbrechen</button>
+      </div>
+    </div></div>`;
+
+    document.getElementById('history-cancel-food').onclick = () => { modalRoot.innerHTML = ''; };
+    document.getElementById('history-link-food').onclick = () => {
+      linkHistoricalEntryToFood(entry, food);
+      modalRoot.innerHTML = '';
+      showToast('Eintrag mit gespeichertem Lebensmittel verknüpft.');
+    };
+    document.getElementById('history-update-food').onclick = () => {
+      food.name = values.name;
+      food.calories = values.calories;
+      food.protein = values.protein;
+      food.fiber = values.fiber;
+      food.updatedAt = new Date().toISOString();
+      linkHistoricalEntryToFood(entry, food);
+      modalRoot.innerHTML = '';
+      showToast('Lebensmittel aktualisiert und Eintrag verknüpft.');
+    };
   }
 
   function fieldRow(ic, label, control) {
@@ -871,6 +990,9 @@
     document.getElementById('cancel-food-delete').onclick = () => { modalRoot.innerHTML = ''; };
     document.getElementById('confirm-food-delete').onclick = () => {
       state.savedFoods = state.savedFoods.filter(f => f.id !== food.id);
+      state.entries.forEach(entry => {
+        if (entry.foodId === food.id) entry.foodId = null;
+      });
       persist();
       modalRoot.innerHTML = '';
       state.editingFoodId = null;

@@ -1,8 +1,17 @@
-# Mampfo v0.2.0
+# Mampfo v0.2.1
 
 Mampfo ist eine persönliche, lokal gespeicherte PWA zum Ernährungstracking.
 
-## Neu in v0.2
+## Neu in v0.2.1
+
+- bestehende Tagebucheinträge können beim Bearbeiten nachträglich als Lebensmittel gespeichert werden
+- identische bereits gespeicherte Lebensmittel werden erkannt und nur verknüpft
+- bei abweichenden Nährwerten kann wahlweise verknüpft oder die gespeicherte Vorlage aktualisiert werden
+- die ursprüngliche `source` eines historischen Eintrags bleibt erhalten; nur `foodId` wird ergänzt
+- beim Löschen eines gespeicherten Lebensmittels werden Verknüpfungen in Tagebucheinträgen sauber gelöst
+- alte Tagebucheinträge und Nährwerte bleiben unverändert
+
+## Enthalten seit v0.2
 
 - persönliche Datenbank für gespeicherte Lebensmittel
 - Abfrage nach neuen manuellen Einträgen: „Für später speichern?“
@@ -35,7 +44,7 @@ Für ein Update der bestehenden Seite:
 3. committen und pushen
 4. GitHub Pages neu laden
 
-Der Service Worker verwendet mit v0.2 einen neuen Cache-Namen, damit die aktualisierten Dateien geladen werden.
+Der Service Worker verwendet mit v0.2.1 einen neuen Cache-Namen, damit die aktualisierten Dateien geladen werden.
 
 ## Lokaler Test
 
@@ -72,8 +81,8 @@ Danach im Browser `http://localhost:8080` öffnen.
 
 ## Datenschutz
 
-Mampfo v0.2 speichert die Daten ausschließlich lokal im Browser. Es gibt keine Anmeldung, keinen Server und keine Cloud-Synchronisation.
+Mampfo v0.2.1 speichert die Daten ausschließlich lokal im Browser. Es gibt keine Anmeldung, keinen Server und keine Cloud-Synchronisation.
 
 ## Version
 
-0.2.0
+0.2.1
