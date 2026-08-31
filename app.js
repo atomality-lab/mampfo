@@ -1,11 +1,12 @@
 (() => {
   'use strict';
 
-  const CFG = window.APP_CONFIG || { appName: 'Mampfo', version: '0.3.1.1' };
+  const CFG = window.APP_CONFIG || { appName: 'Mampfo', version: '0.3.2' };
   const STORAGE = {
     settings: 'mampfo.settings.v2',
     entries: 'mampfo.entries.v2',
     foods: 'mampfo.savedFoods.v2',
+    recipes: 'mampfo.recipes.v3',
     onboarded: 'mampfo.onboarded.v2',
     dataVersion: 'mampfo.dataVersion'
   };
@@ -37,6 +38,7 @@
         ...entry,
         source: entry.source || 'manual',
         foodId: entry.foodId || null,
+        recipeId: entry.recipeId || null,
         fat: entry.fat ?? null,
         carbohydrates: entry.carbohydrates ?? null,
         amount: entry.amount ?? null,
@@ -48,12 +50,14 @@
       localStorage.setItem(STORAGE.onboarded, localStorage.getItem(LEGACY.onboarded));
     }
     if (!has(STORAGE.foods)) localStorage.setItem(STORAGE.foods, '[]');
+    if (!has(STORAGE.recipes)) localStorage.setItem(STORAGE.recipes, '[]');
   }
 
   function migrateToV3() {
     migrateLegacyData();
     const entries = load(STORAGE.entries, []).map(entry => ({
       foodId: null,
+      recipeId: null,
       source: 'manual',
       fat: null,
       carbohydrates: null,
@@ -71,8 +75,19 @@
       baseUnit: 'portion',
       ...food
     }));
+    const recipes = load(STORAGE.recipes, []).map(recipe => ({
+      calculationMode: 'manual',
+      servings: 1,
+      totalCalories: 0,
+      totalProtein: null,
+      totalFiber: null,
+      totalFat: null,
+      totalCarbohydrates: null,
+      ...recipe
+    }));
     localStorage.setItem(STORAGE.entries, JSON.stringify(entries));
     localStorage.setItem(STORAGE.foods, JSON.stringify(foods));
+    localStorage.setItem(STORAGE.recipes, JSON.stringify(recipes));
     localStorage.setItem(STORAGE.dataVersion, '3');
   }
 
@@ -84,15 +99,20 @@
     selectedDate: todayISO(),
     editingId: null,
     editingFoodId: null,
+    editingRecipeId: null,
+    selectedRecipeId: null,
+    recipeSearch: '',
     selectedSavedFoodId: null,
     settings: load(STORAGE.settings, { dailyCalories: 1700, dailyProtein: 80 }),
     entries: load(STORAGE.entries, []),
     savedFoods: load(STORAGE.foods, []),
+    recipes: load(STORAGE.recipes, []),
     onboarded: localStorage.getItem(STORAGE.onboarded) === 'yes'
   };
 
   state.entries = state.entries.map(entry => ({
     foodId: null,
+    recipeId: null,
     source: 'manual',
     fat: null,
     carbohydrates: null,
@@ -111,6 +131,17 @@
     ...food
   }));
 
+  state.recipes = state.recipes.map(recipe => ({
+    calculationMode: 'manual',
+    servings: 1,
+    totalCalories: 0,
+    totalProtein: null,
+    totalFiber: null,
+    totalFat: null,
+    totalCarbohydrates: null,
+    ...recipe
+  }));
+
   const app = document.getElementById('app');
   const modalRoot = document.getElementById('modal-root');
   const toastRoot = document.getElementById('toast-root');
@@ -121,6 +152,7 @@
     localStorage.setItem(STORAGE.settings, JSON.stringify(state.settings));
     localStorage.setItem(STORAGE.entries, JSON.stringify(state.entries));
     localStorage.setItem(STORAGE.foods, JSON.stringify(state.savedFoods));
+    localStorage.setItem(STORAGE.recipes, JSON.stringify(state.recipes));
     localStorage.setItem(STORAGE.onboarded, state.onboarded ? 'yes' : 'no');
     localStorage.setItem(STORAGE.dataVersion, '3');
   }
@@ -277,7 +309,7 @@
     const map = {
       settings: '⚙', calendar: '▣', prev: '‹', next: '›', flame: '♨', protein: '💪', leaf: '♧', clock: '◷',
       plus: '＋', home: '⌂', recipe: '▤', fasting: '☾', stats: '▥', back: '←', edit: '✎', trash: '♲',
-      food: '♜', scale: '↔', drop: '◒', carbs: '◇', target: '◎', rocket: '↗', star: '★', starEmpty: '☆', recent: '◷', search: '⌕', list: '☷'
+      food: '♜', scale: '↔', drop: '◒', carbs: '◇', target: '◎', rocket: '↗', star: '★', starEmpty: '☆', recent: '◷', search: '⌕', list: '☷', portions: '◫', bowl: '◡', save: '✓'
     };
     return map[name] || '•';
   }
@@ -292,6 +324,8 @@
     state.view = view;
     if ('editingId' in opts) state.editingId = opts.editingId;
     if ('editingFoodId' in opts) state.editingFoodId = opts.editingFoodId;
+    if ('editingRecipeId' in opts) state.editingRecipeId = opts.editingRecipeId;
+    if ('selectedRecipeId' in opts) state.selectedRecipeId = opts.selectedRecipeId;
     if ('selectedSavedFoodId' in opts) state.selectedSavedFoodId = opts.selectedSavedFoodId;
     window.scrollTo({ top: 0, behavior: 'instant' });
     render();
@@ -320,7 +354,11 @@
     else if (state.view === 'settings') renderSettings();
     else if (state.view === 'foods') renderFoodManager();
     else if (state.view === 'foodEdit') renderFoodEdit();
-    else if (['recipes', 'fasting', 'stats'].includes(state.view)) renderPlaceholder(state.view);
+    else if (state.view === 'recipes') renderRecipes();
+    else if (state.view === 'recipeEdit') renderRecipeEdit();
+    else if (state.view === 'recipeDetail') renderRecipeDetail();
+    else if (state.view === 'recipeLog') renderRecipeLog();
+    else if (['fasting', 'stats'].includes(state.view)) renderPlaceholder(state.view);
     else renderToday();
     bindCommon();
   }
@@ -845,6 +883,7 @@
       ...values,
       source: 'manual',
       foodId: null,
+      recipeId: null,
       createdAt: now,
       updatedAt: now
     };
@@ -1175,7 +1214,7 @@
         <span class="chev">›</span>
       </button>
 
-      <div class="settings-note">${icon('rocket')}<br>Mengen sowie Fett und Kohlenhydrate sind jetzt aktiv. Rezepte folgen mit v0.3.2; Fasten und Auswertung später.</div>
+      <div class="settings-note">${icon('rocket')}<br>Rezepte und Portionen sind jetzt aktiv. Zutatenbasierte Rezepte folgen mit v0.3.3; Fasten und Auswertung später.</div>
       <div class="version">${esc(CFG.appName)} · Version ${esc(CFG.version)}</div>
     </main>${bottomNav('')}`;
 
@@ -1318,9 +1357,292 @@
     };
   }
 
+
+  function recipePerPortion(recipe) {
+    const servings = Number(recipe.servings || 1);
+    const divisor = servings > 0 ? servings : 1;
+    return {
+      calories: Number(recipe.totalCalories || 0) / divisor,
+      protein: recipe.totalProtein == null ? null : Number(recipe.totalProtein) / divisor,
+      fiber: recipe.totalFiber == null ? null : Number(recipe.totalFiber) / divisor,
+      fat: recipe.totalFat == null ? null : Number(recipe.totalFat) / divisor,
+      carbohydrates: recipe.totalCarbohydrates == null ? null : Number(recipe.totalCarbohydrates) / divisor
+    };
+  }
+
+  function recipeNutrientLine(values, includeExtras = false) {
+    const parts = [`${fmt(values.calories, 0)} kcal`];
+    if (values.protein != null) parts.push(`${fmt(values.protein)} g Protein`);
+    if (values.fiber != null) parts.push(`${fmt(values.fiber)} g Ballaststoffe`);
+    if (includeExtras && values.fat != null) parts.push(`${fmt(values.fat)} g Fett`);
+    if (includeExtras && values.carbohydrates != null) parts.push(`${fmt(values.carbohydrates)} g Kohlenhydrate`);
+    return parts.join(' · ');
+  }
+
+  function renderRecipes() {
+    const needle = normalizeName(state.recipeSearch);
+    const recipes = [...state.recipes]
+      .filter(recipe => !needle || normalizeName(recipe.name).includes(needle))
+      .sort((a, b) => a.name.localeCompare(b.name, 'de'));
+
+    app.innerHTML = `<main class="page">
+      <header class="topbar"><div><div class="brand-kicker">${esc(CFG.appName)}</div><h1>Rezepte</h1></div><button class="icon-button" data-nav="settings" aria-label="Einstellungen">${icon('settings')}</button></header>
+      <div class="recipe-toolbar">
+        <div class="manager-search"><span>${icon('search')}</span><input id="recipe-search" type="search" placeholder="Rezept suchen" autocomplete="off" value="${esc(state.recipeSearch)}"></div>
+        <button class="primary-button recipe-new-button" id="new-recipe">${icon('plus')} Neues Rezept</button>
+      </div>
+      <div class="manager-caption">${state.recipes.length === 1 ? '<strong>1</strong> Rezept' : `<strong>${state.recipes.length}</strong> Rezepte`}</div>
+      <section id="recipe-list" class="recipe-grid">${recipeListMarkup(recipes)}</section>
+    </main>${bottomNav('recipes')}`;
+
+    document.getElementById('new-recipe').onclick = () => setView('recipeEdit', { editingRecipeId: 'new' });
+    document.getElementById('recipe-search').addEventListener('input', event => {
+      state.recipeSearch = event.target.value;
+      const q = normalizeName(state.recipeSearch);
+      const filtered = [...state.recipes].filter(recipe => !q || normalizeName(recipe.name).includes(q)).sort((a, b) => a.name.localeCompare(b.name, 'de'));
+      document.getElementById('recipe-list').innerHTML = recipeListMarkup(filtered);
+      bindRecipeCards();
+    });
+    bindRecipeCards();
+  }
+
+  function recipeListMarkup(recipes) {
+    if (!state.recipes.length) {
+      return `<div class="recipe-empty"><div class="recipe-empty-icon">${icon('recipe')}</div><h2>Noch keine Rezepte</h2><p>Speichere deine eigenen Gerichte und füge sie später mit wenigen Klicks deinem Ernährungstagebuch hinzu.</p><button class="secondary-button" id="first-recipe">${icon('plus')} Erstes Rezept erstellen</button></div>`;
+    }
+    if (!recipes.length) return `<div class="mini-empty compact"><div class="mini-empty-icon">${icon('search')}</div><h3>Keine Treffer</h3><p>Für diese Suche wurde kein Rezept gefunden.</p></div>`;
+    return recipes.map(recipe => {
+      const per = recipePerPortion(recipe);
+      return `<article class="recipe-card">
+        <button class="recipe-card-main" data-recipe-id="${esc(recipe.id)}">
+          <span class="recipe-card-icon">${icon('bowl')}</span>
+          <span class="recipe-card-copy"><strong>${esc(recipe.name)}</strong><small>${recipeNutrientLine(per)}</small><span>${fmt(recipe.servings)} ${Number(recipe.servings) === 1 ? 'Portion' : 'Portionen'} · Werte pro Portion</span></span>
+          <span class="chev">›</span>
+        </button>
+      </article>`;
+    }).join('');
+  }
+
+  function bindRecipeCards() {
+    const first = document.getElementById('first-recipe');
+    if (first) first.onclick = () => setView('recipeEdit', { editingRecipeId: 'new' });
+    document.querySelectorAll('[data-recipe-id]').forEach(btn => {
+      btn.onclick = () => setView('recipeDetail', { selectedRecipeId: btn.dataset.recipeId });
+    });
+  }
+
+  function renderRecipeEdit() {
+    const isNew = state.editingRecipeId === 'new' || !state.editingRecipeId;
+    const recipe = isNew ? null : state.recipes.find(item => item.id === state.editingRecipeId);
+    if (!isNew && !recipe) return setView('recipes', { editingRecipeId: null });
+    const initial = recipe || {
+      name: '', servings: 4, totalCalories: '', totalProtein: '', totalFiber: '', totalFat: '', totalCarbohydrates: ''
+    };
+    const extrasOpen = initial.totalFat != null && initial.totalFat !== '' || initial.totalCarbohydrates != null && initial.totalCarbohydrates !== '' ? ' open' : '';
+
+    app.innerHTML = `<main class="page">
+      <header class="topbar"><button class="icon-button" id="recipe-edit-back" aria-label="Zurück">${icon('back')}</button><h1>${isNew ? 'Neues Rezept' : 'Rezept bearbeiten'}</h1><span style="width:44px"></span></header>
+      <div class="info-banner">${icon('recipe')} <span>In v0.3.2 gibst du die Nährwerte für das gesamte Rezept direkt ein. Zutaten folgen mit v0.3.3.</span></div>
+      <form id="recipe-form" class="form-card">
+        ${fieldRow(icon('food'), 'Rezeptname', `<input id="recipe-name" type="text" autocomplete="off" value="${esc(initial.name)}" placeholder="z. B. Linsenbolognese">`)}
+        ${fieldRow(icon('portions'), 'Anzahl Portionen', `<input id="recipe-servings" type="text" inputmode="decimal" value="${initial.servings ?? 4}"><p class="input-help">Mampfo berechnet daraus automatisch die Werte pro Portion.</p>`)}
+        <div class="recipe-total-heading"><span>Gesamtes Rezept</span><small>Nährwerte für alle Portionen zusammen</small></div>
+        ${fieldRow(icon('flame'), 'Kalorien (kcal)', `<input id="recipe-calories" type="text" inputmode="decimal" value="${initial.totalCalories ?? ''}" placeholder="0">`)}
+        ${fieldRow(icon('protein'), 'Protein (g)', `<input id="recipe-protein" type="text" inputmode="decimal" value="${initial.totalProtein ?? ''}" placeholder="optional">`)}
+        ${fieldRow(icon('leaf'), 'Ballaststoffe (g)', `<input id="recipe-fiber" type="text" inputmode="decimal" value="${initial.totalFiber ?? ''}" placeholder="optional">`)}
+        <details class="extra-nutrients"${extrasOpen}>
+          <summary>Weitere Nährwerte</summary>
+          <div class="extra-nutrient-fields">
+            ${fieldRow(icon('drop'), 'Fett (g)', `<input id="recipe-fat" type="text" inputmode="decimal" value="${initial.totalFat ?? ''}" placeholder="optional">`)}
+            ${fieldRow(icon('carbs'), 'Kohlenhydrate (g)', `<input id="recipe-carbohydrates" type="text" inputmode="decimal" value="${initial.totalCarbohydrates ?? ''}" placeholder="optional">`)}
+          </div>
+        </details>
+        <section class="recipe-preview" aria-live="polite"><small>Pro Portion</small><strong id="recipe-preview-calories">0 kcal</strong><span id="recipe-preview-main">Protein offen · Ballaststoffe offen</span><span id="recipe-preview-extra"></span></section>
+        <div class="form-actions"><button class="primary-button" type="submit">${isNew ? 'Rezept speichern' : 'Änderungen speichern'}</button>${!isNew ? `<button class="danger-button" type="button" id="delete-recipe">${icon('trash')} Rezept löschen</button>` : ''}</div>
+      </form>
+    </main>${bottomNav('recipes')}`;
+
+    document.getElementById('recipe-edit-back').onclick = () => isNew ? setView('recipes', { editingRecipeId: null }) : setView('recipeDetail', { selectedRecipeId: recipe.id, editingRecipeId: null });
+    ['recipe-servings','recipe-calories','recipe-protein','recipe-fiber','recipe-fat','recipe-carbohydrates'].forEach(id => document.getElementById(id).addEventListener('input', updateRecipePreview));
+    updateRecipePreview();
+    document.getElementById('recipe-form').addEventListener('submit', event => saveRecipeForm(event, recipe));
+    const deleteButton = document.getElementById('delete-recipe');
+    if (deleteButton) deleteButton.onclick = () => confirmDeleteRecipe(recipe);
+  }
+
+  function recipeFormValues() {
+    return {
+      name: document.getElementById('recipe-name').value.trim(),
+      servings: parseNum(document.getElementById('recipe-servings').value),
+      totalCalories: parseNum(document.getElementById('recipe-calories').value),
+      totalProtein: parseNum(document.getElementById('recipe-protein').value),
+      totalFiber: parseNum(document.getElementById('recipe-fiber').value),
+      totalFat: parseNum(document.getElementById('recipe-fat').value),
+      totalCarbohydrates: parseNum(document.getElementById('recipe-carbohydrates').value)
+    };
+  }
+
+  function validateRecipe(values) {
+    if (!values.name) return 'Bitte einen Rezeptnamen eingeben.';
+    if (values.servings == null || values.servings <= 0) return 'Bitte eine gültige Portionszahl eingeben.';
+    if (values.totalCalories == null || values.totalCalories < 0) return 'Bitte gültige Kalorien eingeben.';
+    if ([values.totalProtein, values.totalFiber, values.totalFat, values.totalCarbohydrates].some(value => value != null && value < 0)) return 'Nährwerte dürfen nicht negativ sein.';
+    return null;
+  }
+
+  function updateRecipePreview() {
+    const servings = parseNum(document.getElementById('recipe-servings')?.value);
+    const divisor = servings && servings > 0 ? servings : 1;
+    const calories = parseNum(document.getElementById('recipe-calories')?.value);
+    const protein = parseNum(document.getElementById('recipe-protein')?.value);
+    const fiber = parseNum(document.getElementById('recipe-fiber')?.value);
+    const fat = parseNum(document.getElementById('recipe-fat')?.value);
+    const carbs = parseNum(document.getElementById('recipe-carbohydrates')?.value);
+    const calEl = document.getElementById('recipe-preview-calories');
+    const mainEl = document.getElementById('recipe-preview-main');
+    const extraEl = document.getElementById('recipe-preview-extra');
+    if (!calEl || !mainEl || !extraEl) return;
+    calEl.textContent = `${fmt((calories || 0) / divisor, 0)} kcal`;
+    mainEl.textContent = `${protein == null ? 'Protein offen' : `${fmt(protein / divisor)} g Protein`} · ${fiber == null ? 'Ballaststoffe offen' : `${fmt(fiber / divisor)} g Ballaststoffe`}`;
+    const extras = [];
+    if (fat != null) extras.push(`${fmt(fat / divisor)} g Fett`);
+    if (carbs != null) extras.push(`${fmt(carbs / divisor)} g Kohlenhydrate`);
+    extraEl.textContent = extras.join(' · ');
+    extraEl.hidden = extras.length === 0;
+  }
+
+  function saveRecipeForm(event, existingRecipe) {
+    event.preventDefault();
+    const values = recipeFormValues();
+    const error = validateRecipe(values);
+    if (error) return showToast(error);
+    const duplicate = state.recipes.find(recipe => recipe.id !== existingRecipe?.id && normalizeName(recipe.name) === normalizeName(values.name));
+    if (duplicate) return showToast('Ein Rezept mit diesem Namen ist bereits gespeichert.');
+    const now = new Date().toISOString();
+    let recipe = existingRecipe;
+    if (recipe) {
+      Object.assign(recipe, values, { calculationMode: 'manual', updatedAt: now });
+    } else {
+      recipe = { id: uuid(), calculationMode: 'manual', ...values, createdAt: now, updatedAt: now };
+      state.recipes.push(recipe);
+    }
+    persist();
+    state.editingRecipeId = null;
+    state.selectedRecipeId = recipe.id;
+    showToast(existingRecipe ? 'Rezept aktualisiert.' : 'Rezept gespeichert.');
+    setView('recipeDetail', { selectedRecipeId: recipe.id, editingRecipeId: null });
+  }
+
+  function renderRecipeDetail() {
+    const recipe = state.recipes.find(item => item.id === state.selectedRecipeId);
+    if (!recipe) return setView('recipes', { selectedRecipeId: null });
+    const per = recipePerPortion(recipe);
+    app.innerHTML = `<main class="page">
+      <header class="topbar"><button class="icon-button" id="recipe-detail-back" aria-label="Zurück">${icon('back')}</button><h1>${esc(recipe.name)}</h1><button class="icon-button" id="edit-recipe" aria-label="Rezept bearbeiten">${icon('edit')}</button></header>
+      <section class="recipe-hero">
+        <div class="recipe-hero-icon">${icon('bowl')}</div><small>Pro Portion</small><strong>${fmt(per.calories, 0)} kcal</strong><span>${per.protein != null ? `${fmt(per.protein)} g Protein` : 'Protein offen'} · ${per.fiber != null ? `${fmt(per.fiber)} g Ballaststoffe` : 'Ballaststoffe offen'}</span>
+      </section>
+      <section class="recipe-detail-grid">
+        <div class="quiet-card"><small>Portionen</small><strong>${fmt(recipe.servings)}</strong></div>
+        <div class="quiet-card"><small>Gesamtes Rezept</small><strong>${fmt(recipe.totalCalories, 0)} kcal</strong></div>
+      </section>
+      ${(per.fat != null || per.carbohydrates != null) ? `<details class="secondary-nutrients" open><summary>Weitere Nährwerte pro Portion</summary><div class="secondary-nutrient-grid"><div><span>${icon('drop')}</span><small>Fett</small><strong>${per.fat == null ? '–' : `${fmt(per.fat)} g`}</strong></div><div><span>${icon('carbs')}</span><small>Kohlenhydrate</small><strong>${per.carbohydrates == null ? '–' : `${fmt(per.carbohydrates)} g`}</strong></div></div></details>` : ''}
+      <div class="recipe-mode-note">${icon('recipe')} Direkt eingegebene Nährwerte · Zutaten folgen mit v0.3.3.</div>
+      <button class="primary-button floating-action recipe-log-action" id="log-recipe">${icon('plus')} Essen eintragen</button>
+    </main>${bottomNav('recipes')}`;
+    document.getElementById('recipe-detail-back').onclick = () => setView('recipes', { selectedRecipeId: null });
+    document.getElementById('edit-recipe').onclick = () => setView('recipeEdit', { editingRecipeId: recipe.id });
+    document.getElementById('log-recipe').onclick = () => setView('recipeLog', { selectedRecipeId: recipe.id });
+  }
+
+  function confirmDeleteRecipe(recipe) {
+    modalRoot.innerHTML = `<div class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="delete-recipe-title"><div class="modal"><h2 id="delete-recipe-title">Rezept löschen?</h2><p>„${esc(recipe.name)}“ wird aus deinen Rezepten entfernt.<br><br>Bereits vorhandene Ernährungseinträge bleiben erhalten.</p><div class="modal-actions"><button class="danger-button" id="confirm-recipe-delete">Löschen</button><button class="secondary-button" id="cancel-recipe-delete">Abbrechen</button></div></div></div>`;
+    document.getElementById('cancel-recipe-delete').onclick = () => { modalRoot.innerHTML = ''; };
+    document.getElementById('confirm-recipe-delete').onclick = () => {
+      state.recipes = state.recipes.filter(item => item.id !== recipe.id);
+      persist();
+      modalRoot.innerHTML = '';
+      state.editingRecipeId = null;
+      state.selectedRecipeId = null;
+      showToast('Rezept gelöscht.');
+      setView('recipes');
+    };
+  }
+
+  function renderRecipeLog() {
+    const recipe = state.recipes.find(item => item.id === state.selectedRecipeId);
+    if (!recipe) return setView('recipes', { selectedRecipeId: null });
+    const per = recipePerPortion(recipe);
+    app.innerHTML = `<main class="page">
+      <header class="topbar"><button class="icon-button" id="recipe-log-back" aria-label="Zurück">${icon('back')}</button><h1>Essen eintragen</h1><span style="width:44px"></span></header>
+      <div class="selected-template recipe-selected"><span>${icon('recipe')}</span><div><small>Rezept · Werte pro Portion</small><strong>${esc(recipe.name)}</strong></div></div>
+      <form id="recipe-log-form" class="form-card">
+        ${fieldRow(icon('portions'), 'Menge', `<input id="recipe-log-portions" type="text" inputmode="decimal" value="1"><div class="portion-chips"><button type="button" data-portions="0.5">½</button><button type="button" data-portions="1" class="active">1</button><button type="button" data-portions="1.5">1½</button><button type="button" data-portions="2">2</button></div>`)}
+        <section class="recipe-preview log-preview"><small>Für diesen Eintrag</small><strong id="recipe-log-calories">${fmt(per.calories, 0)} kcal</strong><span id="recipe-log-main">${per.protein != null ? `${fmt(per.protein)} g Protein` : 'Protein offen'} · ${per.fiber != null ? `${fmt(per.fiber)} g Ballaststoffe` : 'Ballaststoffe offen'}</span><span id="recipe-log-extra"></span></section>
+        ${fieldRow(icon('calendar'), 'Datum', `<input id="recipe-log-date" type="date" value="${esc(state.selectedDate)}">`)}
+        ${fieldRow(icon('clock'), 'Uhrzeit', `<input id="recipe-log-time" type="time" value="${esc(nowTime())}">`)}
+        <button class="primary-button" type="submit">${icon('save')} Ins Tagebuch eintragen</button>
+      </form>
+    </main>${bottomNav('recipes')}`;
+    document.getElementById('recipe-log-back').onclick = () => setView('recipeDetail', { selectedRecipeId: recipe.id });
+    document.getElementById('recipe-log-portions').addEventListener('input', () => updateRecipeLogPreview(recipe));
+    document.querySelectorAll('[data-portions]').forEach(btn => btn.onclick = () => {
+      document.getElementById('recipe-log-portions').value = btn.dataset.portions;
+      document.querySelectorAll('[data-portions]').forEach(item => item.classList.toggle('active', item === btn));
+      updateRecipeLogPreview(recipe);
+    });
+    updateRecipeLogPreview(recipe);
+    document.getElementById('recipe-log-form').addEventListener('submit', event => saveRecipeLog(event, recipe));
+  }
+
+  function scaledRecipeValues(recipe, portions) {
+    const per = recipePerPortion(recipe);
+    const factor = Number(portions);
+    const result = {};
+    NUTRIENT_KEYS.forEach(key => { result[key] = per[key] == null ? null : per[key] * factor; });
+    return result;
+  }
+
+  function updateRecipeLogPreview(recipe) {
+    const portions = parseNum(document.getElementById('recipe-log-portions')?.value);
+    const factor = portions != null && portions > 0 ? portions : 0;
+    const values = scaledRecipeValues(recipe, factor);
+    const cal = document.getElementById('recipe-log-calories');
+    const main = document.getElementById('recipe-log-main');
+    const extra = document.getElementById('recipe-log-extra');
+    if (!cal || !main || !extra) return;
+    cal.textContent = `${fmt(values.calories, 0)} kcal`;
+    main.textContent = `${values.protein == null ? 'Protein offen' : `${fmt(values.protein)} g Protein`} · ${values.fiber == null ? 'Ballaststoffe offen' : `${fmt(values.fiber)} g Ballaststoffe`}`;
+    const extras = [];
+    if (values.fat != null) extras.push(`${fmt(values.fat)} g Fett`);
+    if (values.carbohydrates != null) extras.push(`${fmt(values.carbohydrates)} g Kohlenhydrate`);
+    extra.textContent = extras.join(' · ');
+    extra.hidden = extras.length === 0;
+  }
+
+  function saveRecipeLog(event, recipe) {
+    event.preventDefault();
+    const portions = parseNum(document.getElementById('recipe-log-portions').value);
+    const date = document.getElementById('recipe-log-date').value;
+    const time = document.getElementById('recipe-log-time').value;
+    if (portions == null || portions <= 0) return showToast('Bitte eine gültige Portionsmenge eingeben.');
+    if (!date || !time) return showToast('Bitte Datum und Uhrzeit angeben.');
+    const values = scaledRecipeValues(recipe, portions);
+    const now = new Date().toISOString();
+    state.entries.push({
+      id: uuid(), name: recipe.name, amount: portions, unit: 'portion',
+      calories: values.calories, protein: values.protein, fiber: values.fiber, fat: values.fat, carbohydrates: values.carbohydrates,
+      date, time, source: 'recipe', foodId: null, recipeId: recipe.id, createdAt: now, updatedAt: now
+    });
+    state.selectedDate = date;
+    state.selectedRecipeId = null;
+    persist();
+    showToast('Rezept ins Tagebuch eingetragen.');
+    setView('today');
+  }
+
   function renderPlaceholder(view) {
     const data = {
-      recipes: ['▤', 'Rezepte', 'Rezepte folgen in einer späteren Version.'],
       fasting: ['☾', 'Fasten', 'Der Fastentimer folgt in einer späteren Version.'],
       stats: ['▥', 'Auswertung', 'Wochen-, Monats- und Fastenauswertungen folgen in einer späteren Version.']
     }[view];
@@ -1333,7 +1655,7 @@
         const view = btn.dataset.nav;
         if (view === 'today') state.selectedDate = state.selectedDate || todayISO();
         if (view === 'add') state.addTab = 'input';
-        setView(view, { editingId: null, editingFoodId: null, selectedSavedFoodId: null });
+        setView(view, { editingId: null, editingFoodId: null, editingRecipeId: null, selectedRecipeId: null, selectedSavedFoodId: null });
       };
     });
   }

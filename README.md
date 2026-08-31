@@ -1,41 +1,41 @@
-# Mampfo v0.3.1.1
+# Mampfo v0.3.2
 
 Mampfo ist eine persönliche, lokal gespeicherte PWA zum Ernährungstracking.
 
+## Neu in v0.3.2 – Rezeptbasis
 
-## Neu in v0.3.1.1
+- das Register **Rezepte** ist jetzt vollständig aktiv
+- eigene Rezepte können angelegt, geöffnet, bearbeitet und gelöscht werden
+- in v0.3.2 werden die Nährwerte des gesamten Rezepts direkt eingegeben
+- Anzahl der Portionen frei festlegbar
+- Kalorien, Protein, Ballaststoffe, Fett und Kohlenhydrate werden automatisch pro Portion berechnet
+- Live-Vorschau der Werte pro Portion beim Erstellen und Bearbeiten
+- Rezepte können mit **½, 1, 1½, 2 oder einer freien Portionsmenge** ins Ernährungstagebuch übernommen werden
+- Datum und Uhrzeit bleiben beim Eintragen editierbar
+- Tagebucheinträge aus Rezepten erhalten `source = recipe` und eine `recipeId`
+- bestehende Tagebucheinträge bleiben unverändert, wenn ein Rezept später geändert oder gelöscht wird
+- Rezeptsuche nach Namen
+- neue lokale Rezeptdatenbank `mampfo.recipes.v3`
 
-- verknüpfte Tagebucheinträge werden beim Bearbeiten gegen ihre gespeicherte Lebensmittelvorlage geprüft
-- Änderungen an Name oder Nährwerten lösen eine Entscheidung aus, statt die alte Verknüpfung still beizubehalten
-- Optionen: nur Tagebucheintrag ändern, gespeichertes Lebensmittel aktualisieren oder bei geändertem Namen als neues Lebensmittel speichern
-- bei „Nur Tagebucheintrag ändern“ wird `foodId` entfernt; ein ursprüngliches `source = savedFood` wird zu `manual`
-- Änderungen nur an Datum/Uhrzeit oder eine korrekt skalierte Mengenänderung behalten die Verknüpfung bei
-- bereits aus v0.3.1 vorhandene abweichende Verknüpfungen werden nicht mehr mit grünem Haken angezeigt
-- bei Wechsel auf ein neues Lebensmittel werden Nutzungszähler der betroffenen Vorlagen neu aus den Verknüpfungen berechnet
+## Rezeptlogik
 
-## Neu in v0.3.1
-
-- Bezugsmenge für gespeicherte Lebensmittel
-- Einheiten: g, ml, Stück und Portion
-- automatische Skalierung der Nährwerte innerhalb derselben Einheit
-- zusätzliche optionale Nährwerte: Fett und Kohlenhydrate
-- kompakter Bereich „Weitere Nährwerte“ beim Erfassen und in der Tagesansicht
-- Mengenangabe in Tagebucheinträgen
-- bestehende Lebensmittel aus v0.2.x werden automatisch als `1 Portion` migriert
-- alte Tagebucheinträge bleiben unverändert; neue Mengenfelder sind dort zunächst leer
-- Datenmodell auf Version 3 aktualisiert
-
-## Mengenlogik
-
-Die Nährwerte eines gespeicherten Lebensmittels beziehen sich immer auf seine Bezugsmenge.
+Ein Rezept speichert seine Nährwerte als Gesamtwerte für das komplette Gericht.
 
 Beispiel:
 
-- 100 g = 350 kcal
-- beim Erfassen werden 250 g gewählt
-- Mampfo berechnet automatisch 875 kcal
+- Linsenbolognese: 1840 kcal insgesamt
+- 4 Portionen
+- Mampfo berechnet 460 kcal pro Portion
 
-Die gespeicherte Vorlage bleibt weiterhin bei 350 kcal pro 100 g. Eine automatische Umrechnung zwischen unterschiedlichen Einheiten findet nicht statt.
+Beim Eintragen von 1,5 Portionen werden 690 kcal sowie alle weiteren vorhandenen Nährwerte entsprechend skaliert.
+
+### Historische Stabilität
+
+Rezepte und Tagebucheinträge sind bewusst lose gekoppelt. Wird ein Rezept später geändert oder gelöscht, verändern sich bereits vorhandene Ernährungseinträge nicht rückwirkend.
+
+## Noch nicht in v0.3.2
+
+Zutatenlisten und die automatische Berechnung eines Rezepts aus gespeicherten Lebensmitteln folgen mit **v0.3.3**.
 
 ## Bestehende Funktionen
 
@@ -49,26 +49,23 @@ Die gespeicherte Vorlage bleibt weiterhin bei 350 kcal pro 100 g. Eine automatis
 - „Zuletzt verwendet“ und „Häufig verwendet“
 - intelligente Suchvorschläge
 - alte Tagebucheinträge nachträglich als Lebensmittel speichern
+- Bezugsmenge und Einheiten g, ml, Stück und Portion
+- automatische Skalierung gespeicherter Lebensmittel
 - lokale Speicherung und Offline-PWA
 
 ## Datenmigration
 
-v0.3.1 verwendet weiterhin die bestehenden `mampfo.*`-Speicherbereiche aus v0.2.x. Beim Start werden die Daten auf `dataVersion = 3` erweitert.
+v0.3.2 verwendet weiterhin `dataVersion = 3` und alle bestehenden `mampfo.*`-Speicherbereiche. Neu hinzu kommt ausschließlich:
 
-Bestehende SavedFoods erhalten automatisch:
+- `mampfo.recipes.v3`
 
-- `baseAmount = 1`
-- `baseUnit = portion`
-- `fat = null`, falls noch nicht vorhanden
-- `carbohydrates = null`, falls noch nicht vorhanden
-
-Bestehende Tagebucheinträge erhalten lediglich die neuen optionalen Felder `amount` und `unit`, ohne ihre bisherigen Werte zu verändern.
+Beim ersten Start wird diese Rezeptdatenbank leer angelegt. Bestehende Lebensmittel, Tagebucheinträge und Einstellungen aus v0.3.1.1 bleiben unverändert.
 
 ## Veröffentlichung auf GitHub Pages
 
 Es gibt keinen Build-Prozess und keine externen Abhängigkeiten. Den Inhalt dieses Ordners direkt in das bestehende Repository kopieren und die vorhandenen Dateien ersetzen.
 
-Der Service Worker verwendet für v0.3.1.1 einen neuen Cache-Namen. Falls ein Gerät zunächst noch die alte Version zeigt, die installierte PWA einmal vollständig schließen und erneut öffnen.
+Der Service Worker verwendet für v0.3.2 einen neuen Cache-Namen. Falls ein Gerät zunächst noch die alte Version zeigt, die installierte PWA einmal vollständig schließen und erneut öffnen.
 
 ## Lokaler Test
 
@@ -80,7 +77,7 @@ Danach `http://localhost:8080` im Browser öffnen.
 
 ## Noch Platzhalter
 
-- Rezepte, geplant für v0.3.2 und v0.3.3
+- Zutatenbasierte Rezepte: v0.3.3
 - Fasten
 - Auswertung
 
@@ -90,4 +87,4 @@ Mampfo speichert die Daten weiterhin ausschließlich lokal im jeweiligen Browser
 
 ## Version
 
-0.3.1.1
+0.3.2

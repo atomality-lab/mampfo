@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.3.2 – Rezeptbasis
+
+- Rezeptregister aktiviert
+- Rezepte mit Name, Portionszahl und direkt eingegebenen Gesamtnährwerten anlegen
+- Kalorien, Protein, Ballaststoffe, Fett und Kohlenhydrate automatisch pro Portion berechnen
+- Live-Vorschau der Portionswerte im Rezepteditor
+- Rezeptübersicht mit Suche ergänzt
+- Rezeptdetail mit Werten pro Portion und Gesamtwerten ergänzt
+- Rezepte bearbeiten und löschen
+- bereits vorhandene Tagebucheinträge bleiben beim Ändern/Löschen eines Rezepts unverändert
+- Rezepte mit ½, 1, 1½, 2 oder freier Portionsmenge ins Tagebuch übernehmen
+- Rezept-Tagebucheinträge speichern `source = recipe` und `recipeId`
+- neue lokale Rezeptdatenbank `mampfo.recipes.v3`
+- Service-Worker-Cache auf v0.3.2 aktualisiert
+
 ## 0.3.1.1 – Verknüpfungslogik beim Bearbeiten
 
 - verknüpfte Tagebucheinträge werden beim Speichern gegen die aktuelle SavedFood-Vorlage geprüft
