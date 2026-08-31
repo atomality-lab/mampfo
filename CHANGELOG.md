@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.2.1 – Rezept-Tracking Patch
+
+- lange Gleitkomma-Nachkommastellen bei Ballaststoffen/Fett und anderen Rezeptwerten in Eingabefeldern behoben
+- Rezept-Tagebucheinträge berechnen Nährwerte beim Ändern der Portionsmenge automatisch neu
+- Skalierung beim Bearbeiten basiert auf dem historischen Snapshot des Eintrags und verändert keine Rezept-Historie
+- Rezepte als zusätzlicher Schnellzugriff unter **Erfassen** ergänzt
+- Rezeptsuche und direkte Portionsauswahl aus dem Erfassen-Register ergänzt
+- Zurück-Navigation aus der Portionsauswahl berücksichtigt den Aufrufweg
+- Service-Worker-Cache auf v0.3.2.1 aktualisiert
+
 ## 0.3.2 – Rezeptbasis
 
 - Rezeptregister aktiviert

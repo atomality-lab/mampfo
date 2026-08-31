@@ -1,6 +1,17 @@
-# Mampfo v0.3.2
+# Mampfo v0.3.2.1
 
 Mampfo ist eine persönliche, lokal gespeicherte PWA zum Ernährungstracking.
+
+
+## Patch v0.3.2.1
+
+- Rundungsfehler bei Rezept-Snapshots behoben: Eingabefelder zeigen keine langen Gleitkomma-Nachkommastellen mehr
+- Rezeptwerte werden beim Speichern eines Tagebucheintrags numerisch bereinigt
+- beim Bearbeiten eines Rezept-Tagebucheintrags skaliert eine Änderung der Portionsmenge Kalorien, Protein, Ballaststoffe, Fett und Kohlenhydrate automatisch
+- die Neuberechnung verwendet bewusst den historischen Tagebuch-Snapshot, nicht ein möglicherweise später verändertes Rezept
+- unter **Erfassen** gibt es jetzt zusätzlich den Reiter **Rezepte** neben Favoriten
+- Rezepte können dort gesucht und direkt zur Portionsauswahl geöffnet werden
+- beim Aufruf über Erfassen führt Zurück wieder in **Erfassen → Rezepte**
 
 ## Neu in v0.3.2 – Rezeptbasis
 
@@ -65,7 +76,7 @@ Beim ersten Start wird diese Rezeptdatenbank leer angelegt. Bestehende Lebensmit
 
 Es gibt keinen Build-Prozess und keine externen Abhängigkeiten. Den Inhalt dieses Ordners direkt in das bestehende Repository kopieren und die vorhandenen Dateien ersetzen.
 
-Der Service Worker verwendet für v0.3.2 einen neuen Cache-Namen. Falls ein Gerät zunächst noch die alte Version zeigt, die installierte PWA einmal vollständig schließen und erneut öffnen.
+Der Service Worker verwendet für v0.3.2.1 einen neuen Cache-Namen. Falls ein Gerät zunächst noch die alte Version zeigt, die installierte PWA einmal vollständig schließen und erneut öffnen.
 
 ## Lokaler Test
 
@@ -87,4 +98,4 @@ Mampfo speichert die Daten weiterhin ausschließlich lokal im jeweiligen Browser
 
 ## Version
 
-0.3.2
+0.3.2.1

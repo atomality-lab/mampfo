@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const CFG = window.APP_CONFIG || { appName: 'Mampfo', version: '0.3.2' };
+  const CFG = window.APP_CONFIG || { appName: 'Mampfo', version: '0.3.2.1' };
   const STORAGE = {
     settings: 'mampfo.settings.v2',
     entries: 'mampfo.entries.v2',
@@ -102,6 +102,8 @@
     editingRecipeId: null,
     selectedRecipeId: null,
     recipeSearch: '',
+    addRecipeSearch: '',
+    recipeLogOrigin: 'recipes',
     selectedSavedFoodId: null,
     settings: load(STORAGE.settings, { dailyCalories: 1700, dailyProtein: 80 }),
     entries: load(STORAGE.entries, []),
@@ -193,6 +195,21 @@
   function fmt(value, digits = 1) {
     const num = Number(value || 0);
     return new Intl.NumberFormat('de-DE', { maximumFractionDigits: digits }).format(num);
+  }
+
+  function cleanNumber(value, digits = 6) {
+    if (value == null || value === '') return null;
+    const num = Number(value);
+    if (!Number.isFinite(num)) return null;
+    const factor = 10 ** digits;
+    return Math.round((num + Number.EPSILON) * factor) / factor;
+  }
+
+  function inputNumber(value, digits = 2) {
+    if (value == null || value === '') return '';
+    const num = cleanNumber(value, digits);
+    if (num == null) return '';
+    return new Intl.NumberFormat('de-DE', { useGrouping: false, maximumFractionDigits: digits }).format(num);
   }
 
   function parseNum(value) {
@@ -326,6 +343,7 @@
     if ('editingFoodId' in opts) state.editingFoodId = opts.editingFoodId;
     if ('editingRecipeId' in opts) state.editingRecipeId = opts.editingRecipeId;
     if ('selectedRecipeId' in opts) state.selectedRecipeId = opts.selectedRecipeId;
+    if ('recipeLogOrigin' in opts) state.recipeLogOrigin = opts.recipeLogOrigin;
     if ('selectedSavedFoodId' in opts) state.selectedSavedFoodId = opts.selectedSavedFoodId;
     window.scrollTo({ top: 0, behavior: 'instant' });
     render();
@@ -504,6 +522,7 @@
     return `<div class="segmented" role="tablist" aria-label="Erfassen">
       <button class="segment ${state.addTab === 'input' ? 'active' : ''}" data-add-tab="input" role="tab">✏ Eingeben</button>
       <button class="segment ${state.addTab === 'favorites' ? 'active' : ''}" data-add-tab="favorites" role="tab">${icon('star')} Favoriten</button>
+      <button class="segment ${state.addTab === 'recipes' ? 'active' : ''}" data-add-tab="recipes" role="tab">${icon('recipe')} Rezepte</button>
       <button class="segment ${state.addTab === 'recent' ? 'active' : ''}" data-add-tab="recent" role="tab">${icon('recent')} Zuletzt</button>
     </div>`;
   }
@@ -523,6 +542,7 @@
     if (!target) return;
     if (state.addTab === 'input') renderFoodForm(target);
     else if (state.addTab === 'favorites') renderFavorites(target);
+    else if (state.addTab === 'recipes') renderAddRecipes(target);
     else renderRecent(target);
   }
 
@@ -534,6 +554,8 @@
     const editing = state.editingId ? state.entries.find(e => e.id === state.editingId) : null;
     const selectedFood = !editing ? getSelectedFood() : null;
     const linkedTemplate = editing?.foodId ? state.savedFoods.find(f => f.id === editing.foodId) : null;
+    const linkedRecipe = editing?.recipeId ? state.recipes.find(r => r.id === editing.recipeId) : null;
+    const recipeSnapshot = editing?.source === 'recipe' && (editing.unit || 'portion') === 'portion' ? editing : null;
     const scalableFood = selectedFood || linkedTemplate || null;
     const initial = editing ? {
       ...editing,
@@ -560,23 +582,26 @@
     const standalone = target === app;
     const unitOptions = ['portion', 'g', 'ml', 'piece'].map(unit => `<option value="${unit}" ${initial.unit === unit ? 'selected' : ''}>${unitLabel(unit, 2)}</option>`).join('');
     const extraOpen = initial.fat != null || initial.carbohydrates != null ? ' open' : '';
-    const quantityHint = scalableFood
-      ? `<p class="input-help scaling-help">Automatische Berechnung auf Basis von ${esc(amountLabel(scalableFood.baseAmount || 1, scalableFood.baseUnit || 'portion'))}. Die Einheit bleibt dabei gleich.</p>`
-      : `<p class="input-help">Für eine persönliche Standardportion kannst du „1 Portion“ unverändert lassen.</p>`;
+    const quantityHint = recipeSnapshot
+      ? `<p class="input-help scaling-help">Rezept-Snapshot: Änderungen der Portionsmenge berechnen die beim Eintragen gespeicherten Nährwerte proportional neu.</p>`
+      : scalableFood
+        ? `<p class="input-help scaling-help">Automatische Berechnung auf Basis von ${esc(amountLabel(scalableFood.baseAmount || 1, scalableFood.baseUnit || 'portion'))}. Die Einheit bleibt dabei gleich.</p>`
+        : `<p class="input-help">Für eine persönliche Standardportion kannst du „1 Portion“ unverändert lassen.</p>`;
 
     const formMarkup = `${editing ? `<div class="info-banner">${icon('edit')} <span>Du bearbeitest einen bestehenden Eintrag.</span></div>` : ''}
       ${selectedFood ? `<div class="selected-template"><span>${icon('star')}</span><div><small>Aus gespeicherten Lebensmitteln · ${esc(amountLabel(selectedFood.baseAmount || 1, selectedFood.baseUnit || 'portion'))}</small><strong>${esc(selectedFood.name)}</strong></div><button type="button" id="clear-template" aria-label="Vorlage entfernen">×</button></div>` : ''}
+      ${recipeSnapshot ? `<div class="selected-template recipe-selected"><span>${icon('recipe')}</span><div><small>Rezept-Eintrag · ${esc(amountLabel(editing.amount || 1, 'portion'))}${linkedRecipe ? ' · Rezept weiterhin vorhanden' : ' · Rezept-Snapshot'}</small><strong>${esc(editing.name)}</strong></div></div>` : ''}
       <form id="food-form" class="form-card">
         ${fieldRow(icon('food'), 'Essen', `<textarea id="name" autocomplete="off" placeholder="z. B. Roggenbrot mit Käse">${esc(initial.name)}</textarea><div id="suggestions" class="suggestions" aria-live="polite"></div><p class="input-help">Ab zwei Zeichen zeigt Mampfo passende gespeicherte Lebensmittel an.</p>`)}
-        ${fieldRow(icon('scale'), 'Menge', `<div class="amount-unit-row"><input id="amount" type="text" inputmode="decimal" value="${initial.amount ?? 1}" placeholder="1"><select id="unit" ${scalableFood ? 'disabled' : ''} aria-label="Einheit">${unitOptions}</select></div>${quantityHint}`)}
-        ${fieldRow(icon('flame'), 'Kalorien (kcal)', `<input id="calories" type="text" inputmode="decimal" value="${initial.calories ?? ''}" placeholder="0">`)}
-        ${fieldRow(icon('protein'), 'Protein (g)', `<input id="protein" type="text" inputmode="decimal" value="${initial.protein ?? ''}" placeholder="optional">`)}
-        ${fieldRow(icon('leaf'), 'Ballaststoffe (g)', `<input id="fiber" type="text" inputmode="decimal" value="${initial.fiber ?? ''}" placeholder="optional">`)}
+        ${fieldRow(icon('scale'), 'Menge', `<div class="amount-unit-row"><input id="amount" type="text" inputmode="decimal" value="${inputNumber(initial.amount ?? 1, 2)}" placeholder="1"><select id="unit" ${(scalableFood || recipeSnapshot) ? 'disabled' : ''} aria-label="Einheit">${unitOptions}</select></div>${quantityHint}`)}
+        ${fieldRow(icon('flame'), 'Kalorien (kcal)', `<input id="calories" type="text" inputmode="decimal" value="${inputNumber(initial.calories, 2)}" placeholder="0">`)}
+        ${fieldRow(icon('protein'), 'Protein (g)', `<input id="protein" type="text" inputmode="decimal" value="${inputNumber(initial.protein, 2)}" placeholder="optional">`)}
+        ${fieldRow(icon('leaf'), 'Ballaststoffe (g)', `<input id="fiber" type="text" inputmode="decimal" value="${inputNumber(initial.fiber, 2)}" placeholder="optional">`)}
         <details class="extra-nutrients"${extraOpen}>
           <summary>Weitere Nährwerte</summary>
           <div class="extra-nutrient-fields">
-            ${fieldRow(icon('drop'), 'Fett (g)', `<input id="fat" type="text" inputmode="decimal" value="${initial.fat ?? ''}" placeholder="optional">`)}
-            ${fieldRow(icon('carbs'), 'Kohlenhydrate (g)', `<input id="carbohydrates" type="text" inputmode="decimal" value="${initial.carbohydrates ?? ''}" placeholder="optional">`)}
+            ${fieldRow(icon('drop'), 'Fett (g)', `<input id="fat" type="text" inputmode="decimal" value="${inputNumber(initial.fat, 2)}" placeholder="optional">`)}
+            ${fieldRow(icon('carbs'), 'Kohlenhydrate (g)', `<input id="carbohydrates" type="text" inputmode="decimal" value="${inputNumber(initial.carbohydrates, 2)}" placeholder="optional">`)}
           </div>
         </details>
         ${fieldRow(icon('calendar'), 'Datum', `<input id="date" type="date" value="${esc(initial.date)}">`)}
@@ -619,7 +644,10 @@
     nameInput.addEventListener('focus', () => updateSuggestions(nameInput.value));
     nameInput.addEventListener('blur', () => window.setTimeout(() => { const box = document.getElementById('suggestions'); if (box) box.innerHTML = ''; }, 180));
 
-    if (scalableFood) {
+    if (recipeSnapshot) {
+      const amountInput = document.getElementById('amount');
+      amountInput.addEventListener('input', () => applyRecipeEntryScalingToForm(recipeSnapshot));
+    } else if (scalableFood) {
       const amountInput = document.getElementById('amount');
       amountInput.addEventListener('input', () => {
         if (normalizeName(document.getElementById('name').value) !== normalizeName(scalableFood.name)) return;
@@ -654,7 +682,29 @@
     NUTRIENT_KEYS.forEach(key => {
       const input = document.getElementById(key);
       if (!input) return;
-      input.value = values[key] == null ? '' : String(Math.round(values[key] * 100) / 100).replace('.', ',');
+      input.value = values[key] == null ? '' : inputNumber(values[key], 2);
+    });
+  }
+
+  function scaledRecipeEntryValues(entry, portions) {
+    const originalPortions = Number(entry.amount || 1);
+    const divisor = originalPortions > 0 ? originalPortions : 1;
+    const factor = Number(portions) / divisor;
+    const result = {};
+    NUTRIENT_KEYS.forEach(key => {
+      result[key] = entry[key] == null ? null : cleanNumber(Number(entry[key]) * factor);
+    });
+    return result;
+  }
+
+  function applyRecipeEntryScalingToForm(entry) {
+    const portions = parseNum(document.getElementById('amount')?.value);
+    if (portions == null || portions <= 0) return;
+    const values = scaledRecipeEntryValues(entry, portions);
+    NUTRIENT_KEYS.forEach(key => {
+      const input = document.getElementById(key);
+      if (!input) return;
+      input.value = values[key] == null ? '' : inputNumber(values[key], 2);
     });
   }
 
@@ -1108,6 +1158,45 @@
     bindSavedFoodCards(target);
   }
 
+  function renderAddRecipes(target) {
+    const needle = normalizeName(state.addRecipeSearch);
+    const recipes = [...state.recipes]
+      .filter(recipe => !needle || normalizeName(recipe.name).includes(needle))
+      .sort((a, b) => a.name.localeCompare(b.name, 'de'));
+
+    target.innerHTML = `<div class="section-heading"><div><h2>Rezepte</h2><p>Wähle ein Rezept und trage direkt die gewünschte Portionsmenge ein.</p></div></div>
+      <div class="manager-search add-recipe-search"><span>${icon('search')}</span><input id="add-recipe-search" type="search" placeholder="Rezept suchen" autocomplete="off" value="${esc(state.addRecipeSearch)}"></div>
+      <div id="add-recipe-list" class="recipe-grid quick-recipe-grid">${addRecipeListMarkup(recipes)}</div>`;
+
+    document.getElementById('add-recipe-search').addEventListener('input', event => {
+      state.addRecipeSearch = event.target.value;
+      const q = normalizeName(state.addRecipeSearch);
+      const filtered = [...state.recipes]
+        .filter(recipe => !q || normalizeName(recipe.name).includes(q))
+        .sort((a, b) => a.name.localeCompare(b.name, 'de'));
+      document.getElementById('add-recipe-list').innerHTML = addRecipeListMarkup(filtered);
+      bindAddRecipeCards(target);
+    });
+    bindAddRecipeCards(target);
+  }
+
+  function addRecipeListMarkup(recipes) {
+    if (!state.recipes.length) {
+      return `<div class="mini-empty compact"><div class="mini-empty-icon">${icon('recipe')}</div><h3>Noch keine Rezepte</h3><p>Lege zuerst im Register Rezepte ein Rezept an.</p></div>`;
+    }
+    if (!recipes.length) return `<div class="mini-empty compact"><div class="mini-empty-icon">${icon('search')}</div><h3>Keine Treffer</h3><p>Für diese Suche wurde kein Rezept gefunden.</p></div>`;
+    return recipes.map(recipe => {
+      const per = recipePerPortion(recipe);
+      return `<article class="recipe-card"><button class="recipe-card-main" data-log-recipe-id="${esc(recipe.id)}"><span class="recipe-card-icon">${icon('bowl')}</span><span class="recipe-card-copy"><strong>${esc(recipe.name)}</strong><small>${recipeNutrientLine(per)}</small><span>pro Portion · zum Erfassen antippen</span></span><span class="chev">›</span></button></article>`;
+    }).join('');
+  }
+
+  function bindAddRecipeCards(root) {
+    root.querySelectorAll('[data-log-recipe-id]').forEach(btn => {
+      btn.onclick = () => setView('recipeLog', { selectedRecipeId: btn.dataset.logRecipeId, recipeLogOrigin: 'add' });
+    });
+  }
+
   function renderRecent(target) {
     const recent = [...state.savedFoods]
       .filter(f => f.lastUsedAt)
@@ -1445,16 +1534,16 @@
       <div class="info-banner">${icon('recipe')} <span>In v0.3.2 gibst du die Nährwerte für das gesamte Rezept direkt ein. Zutaten folgen mit v0.3.3.</span></div>
       <form id="recipe-form" class="form-card">
         ${fieldRow(icon('food'), 'Rezeptname', `<input id="recipe-name" type="text" autocomplete="off" value="${esc(initial.name)}" placeholder="z. B. Linsenbolognese">`)}
-        ${fieldRow(icon('portions'), 'Anzahl Portionen', `<input id="recipe-servings" type="text" inputmode="decimal" value="${initial.servings ?? 4}"><p class="input-help">Mampfo berechnet daraus automatisch die Werte pro Portion.</p>`)}
+        ${fieldRow(icon('portions'), 'Anzahl Portionen', `<input id="recipe-servings" type="text" inputmode="decimal" value="${inputNumber(initial.servings ?? 4, 2)}"><p class="input-help">Mampfo berechnet daraus automatisch die Werte pro Portion.</p>`)}
         <div class="recipe-total-heading"><span>Gesamtes Rezept</span><small>Nährwerte für alle Portionen zusammen</small></div>
-        ${fieldRow(icon('flame'), 'Kalorien (kcal)', `<input id="recipe-calories" type="text" inputmode="decimal" value="${initial.totalCalories ?? ''}" placeholder="0">`)}
-        ${fieldRow(icon('protein'), 'Protein (g)', `<input id="recipe-protein" type="text" inputmode="decimal" value="${initial.totalProtein ?? ''}" placeholder="optional">`)}
-        ${fieldRow(icon('leaf'), 'Ballaststoffe (g)', `<input id="recipe-fiber" type="text" inputmode="decimal" value="${initial.totalFiber ?? ''}" placeholder="optional">`)}
+        ${fieldRow(icon('flame'), 'Kalorien (kcal)', `<input id="recipe-calories" type="text" inputmode="decimal" value="${inputNumber(initial.totalCalories, 2)}" placeholder="0">`)}
+        ${fieldRow(icon('protein'), 'Protein (g)', `<input id="recipe-protein" type="text" inputmode="decimal" value="${inputNumber(initial.totalProtein, 2)}" placeholder="optional">`)}
+        ${fieldRow(icon('leaf'), 'Ballaststoffe (g)', `<input id="recipe-fiber" type="text" inputmode="decimal" value="${inputNumber(initial.totalFiber, 2)}" placeholder="optional">`)}
         <details class="extra-nutrients"${extrasOpen}>
           <summary>Weitere Nährwerte</summary>
           <div class="extra-nutrient-fields">
-            ${fieldRow(icon('drop'), 'Fett (g)', `<input id="recipe-fat" type="text" inputmode="decimal" value="${initial.totalFat ?? ''}" placeholder="optional">`)}
-            ${fieldRow(icon('carbs'), 'Kohlenhydrate (g)', `<input id="recipe-carbohydrates" type="text" inputmode="decimal" value="${initial.totalCarbohydrates ?? ''}" placeholder="optional">`)}
+            ${fieldRow(icon('drop'), 'Fett (g)', `<input id="recipe-fat" type="text" inputmode="decimal" value="${inputNumber(initial.totalFat, 2)}" placeholder="optional">`)}
+            ${fieldRow(icon('carbs'), 'Kohlenhydrate (g)', `<input id="recipe-carbohydrates" type="text" inputmode="decimal" value="${inputNumber(initial.totalCarbohydrates, 2)}" placeholder="optional">`)}
           </div>
         </details>
         <section class="recipe-preview" aria-live="polite"><small>Pro Portion</small><strong id="recipe-preview-calories">0 kcal</strong><span id="recipe-preview-main">Protein offen · Ballaststoffe offen</span><span id="recipe-preview-extra"></span></section>
@@ -1552,7 +1641,7 @@
     </main>${bottomNav('recipes')}`;
     document.getElementById('recipe-detail-back').onclick = () => setView('recipes', { selectedRecipeId: null });
     document.getElementById('edit-recipe').onclick = () => setView('recipeEdit', { editingRecipeId: recipe.id });
-    document.getElementById('log-recipe').onclick = () => setView('recipeLog', { selectedRecipeId: recipe.id });
+    document.getElementById('log-recipe').onclick = () => setView('recipeLog', { selectedRecipeId: recipe.id, recipeLogOrigin: 'recipes' });
   }
 
   function confirmDeleteRecipe(recipe) {
@@ -1571,8 +1660,9 @@
 
   function renderRecipeLog() {
     const recipe = state.recipes.find(item => item.id === state.selectedRecipeId);
-    if (!recipe) return setView('recipes', { selectedRecipeId: null });
+    if (!recipe) return state.recipeLogOrigin === 'add' ? setView('add', { selectedRecipeId: null }) : setView('recipes', { selectedRecipeId: null });
     const per = recipePerPortion(recipe);
+    const fromAdd = state.recipeLogOrigin === 'add';
     app.innerHTML = `<main class="page">
       <header class="topbar"><button class="icon-button" id="recipe-log-back" aria-label="Zurück">${icon('back')}</button><h1>Essen eintragen</h1><span style="width:44px"></span></header>
       <div class="selected-template recipe-selected"><span>${icon('recipe')}</span><div><small>Rezept · Werte pro Portion</small><strong>${esc(recipe.name)}</strong></div></div>
@@ -1583,8 +1673,15 @@
         ${fieldRow(icon('clock'), 'Uhrzeit', `<input id="recipe-log-time" type="time" value="${esc(nowTime())}">`)}
         <button class="primary-button" type="submit">${icon('save')} Ins Tagebuch eintragen</button>
       </form>
-    </main>${bottomNav('recipes')}`;
-    document.getElementById('recipe-log-back').onclick = () => setView('recipeDetail', { selectedRecipeId: recipe.id });
+    </main>${bottomNav(fromAdd ? 'add' : 'recipes')}`;
+    document.getElementById('recipe-log-back').onclick = () => {
+      if (fromAdd) {
+        state.addTab = 'recipes';
+        setView('add', { selectedRecipeId: null, recipeLogOrigin: 'recipes' });
+      } else {
+        setView('recipeDetail', { selectedRecipeId: recipe.id, recipeLogOrigin: 'recipes' });
+      }
+    };
     document.getElementById('recipe-log-portions').addEventListener('input', () => updateRecipeLogPreview(recipe));
     document.querySelectorAll('[data-portions]').forEach(btn => btn.onclick = () => {
       document.getElementById('recipe-log-portions').value = btn.dataset.portions;
@@ -1599,7 +1696,7 @@
     const per = recipePerPortion(recipe);
     const factor = Number(portions);
     const result = {};
-    NUTRIENT_KEYS.forEach(key => { result[key] = per[key] == null ? null : per[key] * factor; });
+    NUTRIENT_KEYS.forEach(key => { result[key] = per[key] == null ? null : cleanNumber(per[key] * factor); });
     return result;
   }
 
@@ -1630,12 +1727,13 @@
     const values = scaledRecipeValues(recipe, portions);
     const now = new Date().toISOString();
     state.entries.push({
-      id: uuid(), name: recipe.name, amount: portions, unit: 'portion',
-      calories: values.calories, protein: values.protein, fiber: values.fiber, fat: values.fat, carbohydrates: values.carbohydrates,
+      id: uuid(), name: recipe.name, amount: cleanNumber(portions, 3), unit: 'portion',
+      calories: cleanNumber(values.calories), protein: cleanNumber(values.protein), fiber: cleanNumber(values.fiber), fat: cleanNumber(values.fat), carbohydrates: cleanNumber(values.carbohydrates),
       date, time, source: 'recipe', foodId: null, recipeId: recipe.id, createdAt: now, updatedAt: now
     });
     state.selectedDate = date;
     state.selectedRecipeId = null;
+    state.recipeLogOrigin = 'recipes';
     persist();
     showToast('Rezept ins Tagebuch eingetragen.');
     setView('today');
@@ -1655,7 +1753,7 @@
         const view = btn.dataset.nav;
         if (view === 'today') state.selectedDate = state.selectedDate || todayISO();
         if (view === 'add') state.addTab = 'input';
-        setView(view, { editingId: null, editingFoodId: null, editingRecipeId: null, selectedRecipeId: null, selectedSavedFoodId: null });
+        setView(view, { editingId: null, editingFoodId: null, editingRecipeId: null, selectedRecipeId: null, selectedSavedFoodId: null, recipeLogOrigin: 'recipes' });
       };
     });
   }

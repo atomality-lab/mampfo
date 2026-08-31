@@ -238,7 +238,7 @@ button { cursor: pointer; }
 
 .segmented {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 5px;
   padding: 5px;
   margin: 12px 0 18px;
@@ -252,7 +252,7 @@ button { cursor: pointer; }
   border-radius: 13px;
   background: transparent;
   color: var(--text-2);
-  font-size: .82rem;
+  font-size: .74rem;
   font-weight: 780;
   padding: 8px 5px;
 }
@@ -526,6 +526,7 @@ button { cursor: pointer; }
   .food-grid { grid-template-columns: repeat(2, 1fr); }
   .manager-list { grid-template-columns: repeat(2, 1fr); }
   .segmented { max-width: 560px; margin-left: auto; margin-right: auto; }
+  .segment { font-size: .82rem; }
 }
 
 /* v0.2.1 – historische Tagebucheinträge nachträglich als Lebensmittel speichern */
@@ -716,6 +717,8 @@ button { cursor: pointer; }
 }
 
 /* v0.3.2 – Rezepte */
+.add-recipe-search { margin: 10px 0 12px; }
+.quick-recipe-grid { margin-top: 0; }
 .recipe-toolbar { display: grid; gap: 10px; margin: 12px 0 10px; }
 .recipe-new-button { width: 100%; }
 .recipe-grid { display: grid; gap: 10px; margin-top: 10px; }
