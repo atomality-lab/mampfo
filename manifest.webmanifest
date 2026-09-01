@@ -1,7 +1,7 @@
 {
   "name": "Mampfo",
   "short_name": "Mampfo",
-  "description": "Persönliches Ernährungstagebuch mit Lebensmitteln, Mengenberechnung und zutatenbasierten Rezepten und flexiblen Referenzmengen",
+  "description": "Persönliches Ernährungstagebuch mit Lebensmitteln, Rezepten und Intervallfasten-Timer",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

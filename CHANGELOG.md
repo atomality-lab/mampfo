@@ -1,5 +1,28 @@
 # Changelog
 
+## v0.4.1 – Fastenplan und Timer
+
+### Neu
+- Hauptregister **Fasten** aktiviert.
+- Fastenpläne **12:12**, **14:10** und **16:8** ergänzt.
+- Benutzerdefinierte Fastendauer mit automatisch berechneter Essensphase ergänzt.
+- Orientierung wahlweise über **Essensphase beginnt** oder **Fasten beginnt**.
+- Uhrzeit des täglichen Startpunkts frei einstellbar.
+- Live-Vorschau der Essens- und Fastenfenster im Planeditor.
+- Timeransicht mit aktueller Phase, Startzeit, Lauf-/Restzeit, Wechselzeit und Fortschrittsbalken.
+- Timer wird aus gespeicherten Zeitpunkten berechnet und benötigt keinen dauerhaften Hintergrundprozess.
+- Regelmäßige Aktualisierung bei geöffneter App sowie Neuberechnung nach Rückkehr aus dem Standby.
+- Unterregister **Timer | Verlauf | Plan** ergänzt; Verlauf bleibt bis v0.4.2 als Vorschau ohne Aufzeichnung.
+- Planänderungen werden am nächsten passenden Startzeitpunkt des neuen Rhythmus aktiviert.
+- Fastenpläne werden historisierbar mit `activeFrom` gespeichert.
+- Neue lokale Speicherbereiche `mampfo.fastPlans.v4` und vorbereitend `mampfo.fastingSessions.v4`.
+- Datenmodell auf Version 4 erweitert.
+- Service-Worker-Cache auf v0.4.1 aktualisiert.
+
+### Bestehende Daten
+- Tagebuch, Lebensmittel, Rezepte und Einstellungen aus v0.3.3.1 bleiben unverändert erhalten.
+
+
 ## v0.3.3.1
 
 ### Neu

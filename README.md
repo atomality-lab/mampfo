@@ -1,6 +1,55 @@
-# Mampfo v0.3.3.1
+# Mampfo v0.4.1
 
 Mampfo ist eine persönliche, lokal gespeicherte PWA zum Ernährungstracking.
+
+
+## Neu in v0.4.1 – Fastenplan und Timer
+
+Das Hauptregister **Fasten** ist jetzt aktiv. v0.4.1 bildet den ersten Schritt des Fastenmoduls und konzentriert sich bewusst auf Plan und Timer.
+
+### Fastenrhythmen
+
+- **12:12** – 12 Stunden Fasten, 12 Stunden Essensphase
+- **14:10** – 14 Stunden Fasten, 10 Stunden Essensphase
+- **16:8** – 16 Stunden Fasten, 8 Stunden Essensphase
+- **Eigener Rhythmus** – Fastendauer frei zwischen 1 und 23 Stunden festlegen
+
+Als Orientierung kann entweder **Essensphase beginnt** oder **Fasten beginnt** gewählt werden. Dazu wird eine Uhrzeit hinterlegt. Mampfo berechnet daraus automatisch beide täglichen Zeitfenster.
+
+### Timer
+
+Der Timer läuft technisch nicht als dauerhafte Stoppuhr im Hintergrund. Mampfo berechnet die aktuelle Phase jederzeit aus Plan und Uhrzeit neu. Dadurch bleibt die Anzeige korrekt, wenn die PWA geschlossen, das Gerät gesperrt oder später wieder geöffnet wird.
+
+Die Timeransicht zeigt abhängig von der aktuellen Phase unter anderem:
+
+- Fasten oder Essensphase
+- Startzeit der aktuellen Phase
+- bereits vergangene Fastenzeit bzw. verbleibende Essenszeit
+- verbleibende Fastenzeit
+- geplante Wechselzeit
+- Fortschrittsbalken
+- aktuellen Fastenplan
+
+Während die App geöffnet ist, wird die Anzeige regelmäßig aktualisiert und beim Zurückkehren aus dem Standby sofort neu berechnet.
+
+### Planänderungen
+
+Der erste Fastenplan wird sofort aktiviert. Wird ein bestehender Plan geändert, speichert Mampfo den neuen Rhythmus für den nächsten passenden Startzeitpunkt des neuen Plans. Damit wird ein laufender Tagesrhythmus nicht mitten in einer Phase umgestellt.
+
+Fastenpläne werden als eigene Datensätze mit `activeFrom` gespeichert. Das bereitet zugleich die historische Zuordnung der Fastenphasen in v0.4.2 vor.
+
+### Vorbereitung auf v0.4.2
+
+Das Unterregister **Verlauf** ist bereits sichtbar, zeichnet in v0.4.1 aber noch keine tatsächlichen Fastenphasen auf. Mit v0.4.2 folgen manuelles Starten/Beenden, Zeitkorrekturen, Nachtragen und Verlauf.
+
+### Daten und Update
+
+- bestehende Tagebucheinträge bleiben unverändert
+- gespeicherte Lebensmittel bleiben unverändert
+- Rezepte bleiben unverändert
+- neue Fastenpläne werden unter `mampfo.fastPlans.v4` gespeichert
+- der Datenstand wird auf Version 4 erweitert
+- Fasten funktioniert vollständig lokal und offline
 
 ## Neu in v0.3.3 – Zutatenbasierte Rezepte
 

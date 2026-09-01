@@ -1,12 +1,14 @@
 (() => {
   'use strict';
 
-  const CFG = window.APP_CONFIG || { appName: 'Mampfo', version: '0.3.3.1' };
+  const CFG = window.APP_CONFIG || { appName: 'Mampfo', version: '0.4.1' };
   const STORAGE = {
     settings: 'mampfo.settings.v2',
     entries: 'mampfo.entries.v2',
     foods: 'mampfo.savedFoods.v2',
     recipes: 'mampfo.recipes.v3',
+    fastPlans: 'mampfo.fastPlans.v4',
+    fastingSessions: 'mampfo.fastingSessions.v4',
     onboarded: 'mampfo.onboarded.v2',
     dataVersion: 'mampfo.dataVersion'
   };
@@ -51,9 +53,11 @@
     }
     if (!has(STORAGE.foods)) localStorage.setItem(STORAGE.foods, '[]');
     if (!has(STORAGE.recipes)) localStorage.setItem(STORAGE.recipes, '[]');
+    if (!has(STORAGE.fastPlans)) localStorage.setItem(STORAGE.fastPlans, '[]');
+    if (!has(STORAGE.fastingSessions)) localStorage.setItem(STORAGE.fastingSessions, '[]');
   }
 
-  function migrateToV3() {
+  function migrateToV4() {
     migrateLegacyData();
     const entries = load(STORAGE.entries, []).map(entry => ({
       foodId: null,
@@ -99,13 +103,26 @@
         carbohydrates: ingredient.carbohydrates ?? null
       })) : []
     }));
+    const fastPlans = load(STORAGE.fastPlans, []).map(plan => ({
+      id: plan.id || uuid(),
+      fastingMinutes: Number(plan.fastingMinutes || 840),
+      eatingMinutes: Number(plan.eatingMinutes || 600),
+      anchorType: plan.anchorType === 'fastingStart' ? 'fastingStart' : 'eatingStart',
+      anchorTime: /^\d{2}:\d{2}$/.test(plan.anchorTime || '') ? plan.anchorTime : '09:00',
+      preset: ['12:12', '14:10', '16:8', 'custom'].includes(plan.preset) ? plan.preset : 'custom',
+      activeFrom: plan.activeFrom || new Date().toISOString(),
+      createdAt: plan.createdAt || plan.activeFrom || new Date().toISOString(),
+      updatedAt: plan.updatedAt || plan.createdAt || new Date().toISOString()
+    }));
     localStorage.setItem(STORAGE.entries, JSON.stringify(entries));
     localStorage.setItem(STORAGE.foods, JSON.stringify(foods));
     localStorage.setItem(STORAGE.recipes, JSON.stringify(recipes));
-    localStorage.setItem(STORAGE.dataVersion, '3');
+    localStorage.setItem(STORAGE.fastPlans, JSON.stringify(fastPlans));
+    if (!has(STORAGE.fastingSessions)) localStorage.setItem(STORAGE.fastingSessions, '[]');
+    localStorage.setItem(STORAGE.dataVersion, '4');
   }
 
-  migrateToV3();
+  migrateToV4();
 
   const state = {
     view: 'today',
@@ -123,10 +140,13 @@
     recipeDraftIngredients: null,
     recipeDraftForId: null,
     recipeEditorMode: null,
+    fastingTab: 'timer',
+    fastingPlanEditing: false,
     settings: load(STORAGE.settings, { dailyCalories: 1700, dailyProtein: 80 }),
     entries: load(STORAGE.entries, []),
     savedFoods: load(STORAGE.foods, []),
     recipes: load(STORAGE.recipes, []),
+    fastPlans: load(STORAGE.fastPlans, []),
     onboarded: localStorage.getItem(STORAGE.onboarded) === 'yes'
   };
 
@@ -176,6 +196,18 @@
     })) : []
   }));
 
+  state.fastPlans = state.fastPlans.map(plan => ({
+    id: plan.id || uuid(),
+    fastingMinutes: Number(plan.fastingMinutes || 840),
+    eatingMinutes: Number(plan.eatingMinutes || 600),
+    anchorType: plan.anchorType === 'fastingStart' ? 'fastingStart' : 'eatingStart',
+    anchorTime: /^\d{2}:\d{2}$/.test(plan.anchorTime || '') ? plan.anchorTime : '09:00',
+    preset: ['12:12', '14:10', '16:8', 'custom'].includes(plan.preset) ? plan.preset : 'custom',
+    activeFrom: plan.activeFrom || new Date().toISOString(),
+    createdAt: plan.createdAt || plan.activeFrom || new Date().toISOString(),
+    updatedAt: plan.updatedAt || plan.createdAt || new Date().toISOString()
+  }));
+
   const app = document.getElementById('app');
   const modalRoot = document.getElementById('modal-root');
   const toastRoot = document.getElementById('toast-root');
@@ -187,8 +219,9 @@
     localStorage.setItem(STORAGE.entries, JSON.stringify(state.entries));
     localStorage.setItem(STORAGE.foods, JSON.stringify(state.savedFoods));
     localStorage.setItem(STORAGE.recipes, JSON.stringify(state.recipes));
+    localStorage.setItem(STORAGE.fastPlans, JSON.stringify(state.fastPlans));
     localStorage.setItem(STORAGE.onboarded, state.onboarded ? 'yes' : 'no');
-    localStorage.setItem(STORAGE.dataVersion, '3');
+    localStorage.setItem(STORAGE.dataVersion, '4');
   }
 
   function todayISO() {
@@ -358,7 +391,7 @@
     const map = {
       settings: '⚙', calendar: '▣', prev: '‹', next: '›', flame: '♨', protein: '💪', leaf: '♧', clock: '◷',
       plus: '＋', home: '⌂', recipe: '▤', fasting: '☾', stats: '▥', back: '←', edit: '✎', trash: '♲',
-      food: '♜', scale: '↔', drop: '◒', carbs: '◇', target: '◎', rocket: '↗', star: '★', starEmpty: '☆', recent: '◷', search: '⌕', list: '☷', portions: '◫', bowl: '◡', save: '✓'
+      food: '♜', scale: '↔', drop: '◒', carbs: '◇', target: '◎', rocket: '↗', star: '★', starEmpty: '☆', recent: '◷', search: '⌕', list: '☷', portions: '◫', bowl: '◡', save: '✓', moon: '☾', sun: '☼', plan: '◴'
     };
     return map[name] || '•';
   }
@@ -415,7 +448,8 @@
     else if (state.view === 'recipeEdit') renderRecipeEdit();
     else if (state.view === 'recipeDetail') renderRecipeDetail();
     else if (state.view === 'recipeLog') renderRecipeLog();
-    else if (['fasting', 'stats'].includes(state.view)) renderPlaceholder(state.view);
+    else if (state.view === 'fasting') renderFasting();
+    else if (state.view === 'stats') renderPlaceholder(state.view);
     else renderToday();
     bindCommon();
   }
@@ -1344,7 +1378,7 @@
         <span class="chev">›</span>
       </button>
 
-      <div class="settings-note">${icon('rocket')}<br>Rezepte können jetzt auch aus Zutaten berechnet werden. Fasten und Auswertung folgen später.</div>
+      <div class="settings-note">${icon('rocket')}<br>Rezepte und Fastentimer sind verfügbar. Fastenverlauf und Auswertung folgen in den nächsten Versionen.</div>
       <div class="version">${esc(CFG.appName)} · Version ${esc(CFG.version)}</div>
     </main>${bottomNav('')}`;
 
@@ -2257,9 +2291,359 @@
   }
 
 
+
+  function parseClockMinutes(value) {
+    const match = /^(\d{2}):(\d{2})$/.exec(String(value || ''));
+    if (!match) return null;
+    const hours = Number(match[1]);
+    const minutes = Number(match[2]);
+    if (hours > 23 || minutes > 59) return null;
+    return hours * 60 + minutes;
+  }
+
+  function clockFromMinutes(total) {
+    const normalized = ((Math.round(total) % 1440) + 1440) % 1440;
+    return `${String(Math.floor(normalized / 60)).padStart(2, '0')}:${String(normalized % 60).padStart(2, '0')}`;
+  }
+
+  function dateAtClock(baseDate, clock) {
+    const mins = parseClockMinutes(clock);
+    if (mins == null) return null;
+    const date = new Date(baseDate);
+    date.setHours(Math.floor(mins / 60), mins % 60, 0, 0);
+    return date;
+  }
+
+  function addDateMinutes(date, minutes) {
+    return new Date(date.getTime() + Number(minutes) * 60000);
+  }
+
+  function activeFastPlan(now = new Date()) {
+    return [...state.fastPlans]
+      .filter(plan => new Date(plan.activeFrom).getTime() <= now.getTime())
+      .sort((a, b) => new Date(a.activeFrom) - new Date(b.activeFrom))
+      .at(-1) || null;
+  }
+
+  function pendingFastPlan(now = new Date()) {
+    return [...state.fastPlans]
+      .filter(plan => new Date(plan.activeFrom).getTime() > now.getTime())
+      .sort((a, b) => new Date(a.activeFrom) - new Date(b.activeFrom))[0] || null;
+  }
+
+  function planPresetLabel(plan) {
+    if (!plan) return '';
+    if (plan.preset && plan.preset !== 'custom') return plan.preset;
+    const fast = cleanNumber(plan.fastingMinutes / 60, 1);
+    const eat = cleanNumber(plan.eatingMinutes / 60, 1);
+    return `${fmt(fast)}:${fmt(eat)}`;
+  }
+
+  function planWindows(plan) {
+    if (!plan) return null;
+    const anchor = parseClockMinutes(plan.anchorTime);
+    if (anchor == null) return null;
+    if (plan.anchorType === 'fastingStart') {
+      const fastEnd = anchor + plan.fastingMinutes;
+      return {
+        fastingStart: clockFromMinutes(anchor), fastingEnd: clockFromMinutes(fastEnd),
+        eatingStart: clockFromMinutes(fastEnd), eatingEnd: clockFromMinutes(anchor + 1440)
+      };
+    }
+    const eatEnd = anchor + plan.eatingMinutes;
+    return {
+      eatingStart: clockFromMinutes(anchor), eatingEnd: clockFromMinutes(eatEnd),
+      fastingStart: clockFromMinutes(eatEnd), fastingEnd: clockFromMinutes(anchor + 1440)
+    };
+  }
+
+  function phaseForPlan(plan, now = new Date()) {
+    if (!plan) return null;
+    let anchor = dateAtClock(now, plan.anchorTime);
+    if (!anchor) return null;
+    if (now.getTime() < anchor.getTime()) anchor = addDateMinutes(anchor, -1440);
+    const firstPhase = plan.anchorType === 'fastingStart' ? 'fasting' : 'eating';
+    const firstDuration = firstPhase === 'fasting' ? plan.fastingMinutes : plan.eatingMinutes;
+    const split = addDateMinutes(anchor, firstDuration);
+    const cycleEnd = addDateMinutes(anchor, 1440);
+    let phase, start, end, totalMinutes;
+    if (now.getTime() < split.getTime()) {
+      phase = firstPhase; start = anchor; end = split; totalMinutes = firstDuration;
+    } else {
+      phase = firstPhase === 'fasting' ? 'eating' : 'fasting';
+      start = split; end = cycleEnd;
+      totalMinutes = 1440 - firstDuration;
+    }
+    const elapsedMinutes = Math.max(0, (now.getTime() - start.getTime()) / 60000);
+    const remainingMinutes = Math.max(0, (end.getTime() - now.getTime()) / 60000);
+    return { phase, start, end, totalMinutes, elapsedMinutes, remainingMinutes };
+  }
+
+  function durationText(minutes, roundMode = 'floor') {
+    const safe = Math.max(0, Number(minutes) || 0);
+    const whole = roundMode === 'ceil' ? Math.ceil(safe) : Math.floor(safe);
+    const hours = Math.floor(whole / 60);
+    const mins = whole % 60;
+    if (hours && mins) return `${hours} h ${String(mins).padStart(2, '0')} min`;
+    if (hours) return `${hours} h`;
+    return `${mins} min`;
+  }
+
+  function clockText(date) {
+    return new Intl.DateTimeFormat('de-DE', { hour: '2-digit', minute: '2-digit' }).format(date);
+  }
+
+  function phaseStartText(date, now = new Date()) {
+    const a = new Date(date); a.setHours(0,0,0,0);
+    const b = new Date(now); b.setHours(0,0,0,0);
+    const diff = Math.round((b - a) / 86400000);
+    if (diff === 0) return `seit ${clockText(date)} Uhr`;
+    if (diff === 1) return `seit gestern, ${clockText(date)} Uhr`;
+    return `seit ${new Intl.DateTimeFormat('de-DE', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }).format(date)} Uhr`;
+  }
+
+  function nextAnchorOccurrence(clock, now = new Date()) {
+    let candidate = dateAtClock(now, clock);
+    if (!candidate) return null;
+    if (candidate.getTime() <= now.getTime() + 30000) candidate = addDateMinutes(candidate, 1440);
+    return candidate;
+  }
+
+  function renderFastingTabs(active) {
+    return `<div class="fasting-tabs" role="tablist" aria-label="Fastenbereiche">
+      <button type="button" class="fasting-tab ${active === 'timer' ? 'active' : ''}" data-fasting-tab="timer">${icon('clock')} Timer</button>
+      <button type="button" class="fasting-tab ${active === 'history' ? 'active' : ''}" data-fasting-tab="history">${icon('list')} Verlauf</button>
+      <button type="button" class="fasting-tab ${active === 'plan' ? 'active' : ''}" data-fasting-tab="plan">${icon('plan')} Plan</button>
+    </div>`;
+  }
+
+  function bindFastingTabs() {
+    document.querySelectorAll('[data-fasting-tab]').forEach(button => {
+      button.onclick = () => {
+        state.fastingTab = button.dataset.fastingTab;
+        state.fastingPlanEditing = false;
+        renderFasting();
+        bindCommon();
+      };
+    });
+  }
+
+  function renderFasting() {
+    const now = new Date();
+    const activePlan = activeFastPlan(now);
+    const pending = pendingFastPlan(now);
+    if (!activePlan) {
+      state.fastingTab = 'plan';
+      app.innerHTML = `<main class="page fasting-page">
+        <header class="topbar"><div><div class="eyebrow">Fasten</div><h1>Fasten einrichten</h1></div></header>
+        <section class="fasting-welcome">
+          <div class="fasting-welcome-icon">${icon('moon')}</div>
+          <h2>Dein Rhythmus, ganz in Ruhe</h2>
+          <p>Wähle einen Fastenrhythmus und eine Startzeit. Mampfo berechnet die aktuelle Phase aus festen Zeitpunkten, auch wenn die App zwischendurch geschlossen ist.</p>
+        </section>
+        ${fastPlanForm(null, true)}
+      </main>${bottomNav('fasting')}`;
+      bindFastPlanForm(true, null);
+      return;
+    }
+
+    const tab = state.fastingTab || 'timer';
+    let content = '';
+    if (tab === 'timer') content = fastingTimerMarkup(activePlan, pending, now);
+    else if (tab === 'history') content = `<section class="fasting-history-placeholder"><div>${icon('list')}</div><h2>Fastenverlauf</h2><p>Die Aufzeichnung tatsächlicher Fastenphasen, Nachtragen und Bearbeiten folgt mit v0.4.2.</p></section>`;
+    else content = fastingPlanMarkup(activePlan, pending);
+
+    app.innerHTML = `<main class="page fasting-page">
+      <header class="topbar"><div><div class="eyebrow">Intervallfasten</div><h1>Fasten</h1></div></header>
+      ${renderFastingTabs(tab)}
+      ${content}
+    </main>${bottomNav('fasting')}`;
+    bindFastingTabs();
+    document.getElementById('open-fast-plan')?.addEventListener('click', () => {
+      state.fastingTab = 'plan';
+      state.fastingPlanEditing = false;
+      renderFasting(); bindCommon();
+    });
+    if (tab === 'plan') bindFastingPlanPage(activePlan);
+  }
+
+  function fastingTimerMarkup(plan, pending, now) {
+    const phase = phaseForPlan(plan, now);
+    if (!phase) return `<div class="settings-note">Der aktuelle Fastenplan konnte nicht berechnet werden.</div>`;
+    const isFast = phase.phase === 'fasting';
+    const progress = Math.max(0, Math.min(100, phase.elapsedMinutes / phase.totalMinutes * 100));
+    const windows = planWindows(plan);
+    const pendingNote = pending ? `<div class="fasting-pending-note">${icon('plan')} Neuer Plan ab <strong>${new Intl.DateTimeFormat('de-DE', { weekday:'short', day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }).format(new Date(pending.activeFrom))}</strong>: ${esc(planPresetLabel(pending))}</div>` : '';
+    return `<section class="fasting-status ${isFast ? 'is-fasting' : 'is-eating'}">
+      <div class="fasting-status-icon">${isFast ? icon('moon') : icon('bowl')}</div>
+      <div class="fasting-status-kicker">${isFast ? 'FASTEN' : 'ESSENSPHASE'}</div>
+      <div class="fasting-since">${phaseStartText(phase.start, now)}</div>
+      <strong class="fasting-main-time">${isFast ? durationText(phase.elapsedMinutes) : durationText(phase.remainingMinutes, 'ceil')}</strong>
+      <div class="fasting-main-label">${isFast ? 'gefastet' : 'noch bis zum Fasten'}</div>
+      ${isFast ? `<div class="fasting-secondary-time">noch ${durationText(phase.remainingMinutes, 'ceil')}</div>` : ''}
+      <div class="fasting-progress"><span style="width:${progress.toFixed(2)}%"></span></div>
+      <div class="fasting-end-text">${isFast ? 'Fasten endet' : 'Fasten beginnt'} um <strong>${clockText(phase.end)} Uhr</strong></div>
+    </section>
+    <section class="fasting-plan-summary">
+      <div class="fasting-plan-badge">${esc(planPresetLabel(plan))}</div>
+      <div><strong>Dein aktueller Plan</strong><small>🍴 ${windows.eatingStart} – ${windows.eatingEnd} · ☾ ${windows.fastingStart} – ${windows.fastingEnd}</small></div>
+      <button type="button" class="mini-link" id="open-fast-plan">Plan</button>
+    </section>
+    ${pendingNote}
+    <div class="fasting-info-note">${icon('clock')} Der Timer muss nicht im Hintergrund laufen. Mampfo berechnet den Status beim Öffnen anhand deiner gespeicherten Zeiten neu.</div>`;
+  }
+
+  function fastingPlanMarkup(plan, pending) {
+    const windows = planWindows(plan);
+    const pendingMarkup = pending ? `<section class="pending-plan-card"><small>Geplanter Wechsel</small><strong>${esc(planPresetLabel(pending))}</strong><span>ab ${new Intl.DateTimeFormat('de-DE', { weekday:'long', day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }).format(new Date(pending.activeFrom))} Uhr</span><span>${planWindows(pending).eatingStart} – ${planWindows(pending).eatingEnd} Essen · ${planWindows(pending).fastingStart} – ${planWindows(pending).fastingEnd} Fasten</span></section>` : '';
+    return `<section class="current-plan-card">
+      <div class="current-plan-top"><div><small>Aktueller Plan</small><strong>${esc(planPresetLabel(plan))}</strong></div><span class="plan-round-icon">${icon('plan')}</span></div>
+      <div class="plan-window-row eating"><span>${icon('bowl')}</span><div><small>Essensphase</small><strong>${windows.eatingStart} – ${windows.eatingEnd}</strong></div></div>
+      <div class="plan-window-row fasting"><span>${icon('moon')}</span><div><small>Fastenphase</small><strong>${windows.fastingStart} – ${windows.fastingEnd}</strong></div></div>
+    </section>
+    ${pendingMarkup}
+    ${state.fastingPlanEditing ? fastPlanForm(plan, false) : `<button type="button" class="primary-button floating-action" id="edit-fast-plan">${icon('edit')} Plan ändern</button>`}
+    <div class="fasting-info-note">Eine Änderung gilt ab dem nächsten Startzeitpunkt des neuen Plans. Der bisherige Rhythmus bleibt bis dahin aktiv.</div>`;
+  }
+
+  function fastPlanForm(plan, initial) {
+    const preset = plan?.preset || '14:10';
+    const fastingMinutes = Number(plan?.fastingMinutes || 840);
+    const customHours = cleanNumber(fastingMinutes / 60, 1);
+    const anchorType = plan?.anchorType || 'eatingStart';
+    const anchorTime = plan?.anchorTime || '09:00';
+    const presets = [
+      ['12:12', '12 h Fasten · 12 h Essen'],
+      ['14:10', '14 h Fasten · 10 h Essen'],
+      ['16:8', '16 h Fasten · 8 h Essen']
+    ];
+    return `<form class="fast-plan-form" id="fast-plan-form" data-preset="${esc(preset)}" data-anchor="${esc(anchorType)}">
+      <div class="section-heading"><div><h2>${initial ? 'Fastenrhythmus' : 'Neuen Plan festlegen'}</h2><p>Wähle eine Voreinstellung oder deinen eigenen Rhythmus.</p></div></div>
+      <div class="fast-preset-grid">
+        ${presets.map(([value, note]) => `<button type="button" class="fast-preset ${preset === value ? 'active' : ''}" data-fast-preset="${value}"><strong>${value}</strong><small>${note}</small></button>`).join('')}
+        <button type="button" class="fast-preset ${preset === 'custom' ? 'active' : ''}" data-fast-preset="custom"><strong>Eigener</strong><small>Rhythmus frei festlegen</small></button>
+      </div>
+      <div class="custom-fast-row" id="custom-fast-row" ${preset === 'custom' ? '' : 'hidden'}>
+        <label for="custom-fast-hours">Fastendauer in Stunden</label>
+        <div class="custom-fast-input"><input id="custom-fast-hours" inputmode="decimal" type="number" min="1" max="23" step="0.5" value="${esc(String(customHours))}"><span>h Fasten</span></div>
+        <small id="custom-eating-hint"></small>
+      </div>
+      <div class="fast-anchor-section">
+        <label>Orientierung</label>
+        <div class="fast-anchor-switch">
+          <button type="button" class="${anchorType === 'eatingStart' ? 'active' : ''}" data-fast-anchor="eatingStart">${icon('bowl')} Essensphase beginnt</button>
+          <button type="button" class="${anchorType === 'fastingStart' ? 'active' : ''}" data-fast-anchor="fastingStart">${icon('moon')} Fasten beginnt</button>
+        </div>
+        <div class="fast-time-field"><label for="fast-anchor-time">Uhrzeit</label><input id="fast-anchor-time" type="time" value="${esc(anchorTime)}"></div>
+      </div>
+      <div class="fast-plan-preview" id="fast-plan-preview"></div>
+      <div class="form-actions">
+        <button type="submit" class="primary-button">${initial ? 'Fastenplan aktivieren' : 'Plan speichern'}</button>
+        ${initial ? '' : '<button type="button" class="secondary-button" id="cancel-fast-plan">Abbrechen</button>'}
+      </div>
+    </form>`;
+  }
+
+  function draftFastPlanFromForm() {
+    const form = document.getElementById('fast-plan-form');
+    if (!form) return null;
+    const preset = form.dataset.preset || '14:10';
+    let fastingMinutes;
+    if (preset === '12:12') fastingMinutes = 720;
+    else if (preset === '14:10') fastingMinutes = 840;
+    else if (preset === '16:8') fastingMinutes = 960;
+    else {
+      const hours = parseNum(document.getElementById('custom-fast-hours')?.value);
+      if (hours == null || hours <= 0 || hours >= 24) return null;
+      fastingMinutes = Math.round(hours * 60);
+    }
+    const eatingMinutes = 1440 - fastingMinutes;
+    const anchorTime = document.getElementById('fast-anchor-time')?.value;
+    if (parseClockMinutes(anchorTime) == null) return null;
+    return { fastingMinutes, eatingMinutes, anchorType: form.dataset.anchor || 'eatingStart', anchorTime, preset };
+  }
+
+  function updateFastPlanPreview() {
+    const draft = draftFastPlanFromForm();
+    const preview = document.getElementById('fast-plan-preview');
+    if (!preview) return;
+    if (!draft) {
+      preview.innerHTML = `<span>Bitte einen gültigen Rhythmus und eine Uhrzeit angeben.</span>`;
+      return;
+    }
+    const windows = planWindows(draft);
+    const customHint = document.getElementById('custom-eating-hint');
+    if (customHint) customHint.textContent = `${fmt(draft.eatingMinutes / 60, 1)} h Essensphase`;
+    preview.innerHTML = `<small>Vorschau</small><strong>${esc(planPresetLabel(draft))}</strong>
+      <div><span class="eat-dot"></span> Essen ${windows.eatingStart} – ${windows.eatingEnd}</div>
+      <div><span class="fast-dot"></span> Fasten ${windows.fastingStart} – ${windows.fastingEnd}</div>`;
+  }
+
+  function bindFastPlanForm(initial, currentPlan) {
+    document.querySelectorAll('[data-fast-preset]').forEach(button => {
+      button.onclick = () => {
+        const form = document.getElementById('fast-plan-form');
+        form.dataset.preset = button.dataset.fastPreset;
+        document.querySelectorAll('[data-fast-preset]').forEach(item => item.classList.toggle('active', item === button));
+        document.getElementById('custom-fast-row').hidden = button.dataset.fastPreset !== 'custom';
+        updateFastPlanPreview();
+      };
+    });
+    document.querySelectorAll('[data-fast-anchor]').forEach(button => {
+      button.onclick = () => {
+        const form = document.getElementById('fast-plan-form');
+        form.dataset.anchor = button.dataset.fastAnchor;
+        document.querySelectorAll('[data-fast-anchor]').forEach(item => item.classList.toggle('active', item === button));
+        updateFastPlanPreview();
+      };
+    });
+    ['custom-fast-hours', 'fast-anchor-time'].forEach(id => document.getElementById(id)?.addEventListener('input', updateFastPlanPreview));
+    document.getElementById('fast-plan-form').addEventListener('submit', event => {
+      event.preventDefault();
+      const draft = draftFastPlanFromForm();
+      if (!draft) return showToast('Bitte Fastenrhythmus und Uhrzeit prüfen.');
+      saveFastPlan(draft, initial);
+    });
+    document.getElementById('cancel-fast-plan')?.addEventListener('click', () => {
+      state.fastingPlanEditing = false;
+      renderFasting(); bindCommon();
+    });
+    updateFastPlanPreview();
+  }
+
+  function bindFastingPlanPage(activePlan) {
+    document.getElementById('edit-fast-plan')?.addEventListener('click', () => {
+      state.fastingPlanEditing = true;
+      renderFasting(); bindCommon();
+    });
+    if (state.fastingPlanEditing) bindFastPlanForm(false, activePlan);
+  }
+
+  function saveFastPlan(draft, initial) {
+    const now = new Date();
+    const activation = initial ? now : nextAnchorOccurrence(draft.anchorTime, now);
+    if (!activation) return showToast('Die Startzeit konnte nicht berechnet werden.');
+    const stamp = now.toISOString();
+    const plan = { id: uuid(), ...draft, activeFrom: activation.toISOString(), createdAt: stamp, updatedAt: stamp };
+    if (initial) {
+      state.fastPlans = [plan];
+      state.fastingTab = 'timer';
+      state.fastingPlanEditing = false;
+      persist();
+      showToast('Fastenplan aktiviert.');
+      renderFasting(); bindCommon();
+      return;
+    }
+    state.fastPlans = state.fastPlans.filter(existing => new Date(existing.activeFrom).getTime() <= now.getTime());
+    state.fastPlans.push(plan);
+    state.fastingPlanEditing = false;
+    persist();
+    showToast(`Neuer Plan ab ${clockText(activation)} Uhr gespeichert.`);
+    renderFasting(); bindCommon();
+  }
+
   function renderPlaceholder(view) {
     const data = {
-      fasting: ['☾', 'Fasten', 'Der Fastentimer folgt in einer späteren Version.'],
       stats: ['▥', 'Auswertung', 'Wochen-, Monats- und Fastenauswertungen folgen in einer späteren Version.']
     }[view];
     app.innerHTML = `<main class="page placeholder-page"><div class="placeholder-icon">${data[0]}</div><h1>${data[1]}</h1><p>${data[2]}</p></main>${bottomNav(view)}`;
@@ -2271,6 +2655,7 @@
         const view = btn.dataset.nav;
         if (view === 'today') state.selectedDate = state.selectedDate || todayISO();
         if (view === 'add') state.addTab = 'input';
+        if (view === 'fasting') { state.fastingTab = 'timer'; state.fastingPlanEditing = false; }
         setView(view, { editingId: null, editingFoodId: null, editingRecipeId: null, selectedRecipeId: null, selectedSavedFoodId: null, recipeLogOrigin: 'recipes' });
       };
     });
@@ -2279,6 +2664,19 @@
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
     window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));
   }
+
+  window.setInterval(() => {
+    if (state.onboarded && state.view === 'fasting' && state.fastingTab === 'timer') {
+      renderFasting();
+      bindCommon();
+    }
+  }, 30000);
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && state.onboarded && state.view === 'fasting' && state.fastingTab === 'timer') {
+      renderFasting();
+      bindCommon();
+    }
+  });
 
   persist();
   render();
