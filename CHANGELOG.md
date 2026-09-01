@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.3.3.1
+
+### Neu
+- Lebensmittel sind direkt unter **Erfassen → Lebensmittel** erreichbar.
+- Neue Lebensmittel können dort direkt angelegt werden.
+- Bezugsmenge und Nährwerte werden bei Mengenänderung innerhalb derselben Einheit proportional skaliert.
+- Schnellaktion **Auf 100 g/ml umrechnen** ergänzt.
+
+### Korrigiert / Verhalten
+- Änderungen nur an Protein, Ballaststoffen, Fett, Kohlenhydraten oder Kalorien lösen keine automatische Änderung anderer Werte aus.
+- Bei einem Wechsel der Einheit findet keine automatische Umrechnung statt.
+- Bestehende Tagebucheinträge und Rezept-Snapshots bleiben unverändert.
+
 ## 0.3.3 – Zutatenbasierte Rezepte
 
 - Rezepteditor um die Modi **Nährwerte direkt** und **Aus Zutaten** erweitert

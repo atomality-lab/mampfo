@@ -1,4 +1,4 @@
-# Mampfo v0.3.3
+# Mampfo v0.3.3.1
 
 Mampfo ist eine persönliche, lokal gespeicherte PWA zum Ernährungstracking.
 
@@ -126,3 +126,15 @@ Mampfo speichert die Daten weiterhin ausschließlich lokal im jeweiligen Browser
 ## Version
 
 0.3.3
+
+
+## Neu in v0.3.3.1
+
+- Lebensmittel als eigener Reiter unter **Erfassen**
+- Lebensmitteldatenbank weiterhin zusätzlich über Einstellungen erreichbar
+- Neues Lebensmittel direkt aus der Datenbank anlegen
+- Änderung der Bezugsmenge skaliert bei gleicher Einheit alle vorhandenen Nährwerte proportional
+- Änderung einzelner Nährwerte verändert keine anderen Werte
+- Einheitenwechsel wird bewusst nicht automatisch umgerechnet
+- Komfortbutton **Auf 100 g umrechnen** bzw. **Auf 100 ml umrechnen**
+- Historische Tagebucheinträge und Rezept-Snapshots bleiben unverändert
