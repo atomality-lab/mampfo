@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.3.3 – Zutatenbasierte Rezepte
+
+- Rezepteditor um die Modi **Nährwerte direkt** und **Aus Zutaten** erweitert
+- gespeicherte Lebensmittel können mit frei gewählter Menge als Rezeptzutaten verwendet werden
+- Zutaten werden als Snapshots gespeichert und ändern sich nicht durch spätere Änderungen an SavedFoods
+- manuelle Zutaten mit g, ml, Stück oder Portion ergänzt
+- manuelle Zutaten können optional gleichzeitig als gespeichertes Lebensmittel angelegt werden
+- bestehende gleichnamige Lebensmittel werden erkannt; bei abweichenden Werten ist Aktualisieren oder reine Rezeptnutzung möglich
+- automatische Summierung aller Zutaten und Berechnung der Werte pro Portion
+- fehlende optionale Nährwerte bleiben als unbekannt erhalten und werden nicht als 0 ausgegeben
+- Zutaten können bearbeitet und entfernt werden
+- Rezeptdetail zeigt Zutatenliste mit Menge und Kalorien
+- Rezeptsuche berücksichtigt jetzt auch Zutatennamen
+- bestehende v0.3.2.x-Rezepte werden mit leerer Zutatenliste kompatibel weitergeführt
+- Service-Worker-Cache auf v0.3.3 aktualisiert
+
 ## 0.3.2.1 – Rezept-Tracking Patch
 
 - lange Gleitkomma-Nachkommastellen bei Ballaststoffen/Fett und anderen Rezeptwerten in Eingabefeldern behoben
