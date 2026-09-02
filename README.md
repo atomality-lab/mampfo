@@ -1,6 +1,35 @@
-# Mampfo v0.4.2
+# Mampfo v0.4.2.1
 
 Mampfo ist eine persönliche, lokal gespeicherte PWA zum Ernährungstracking.
+
+
+## Neu in v0.4.2.1 – Fastenverlauf nach Kalendertagen
+
+Der Fastenverlauf trennt jetzt die technische **Fastenphase** von der für einen Kalendertag sichtbaren **Fastenzeit**.
+
+Eine zusammenhängende Session wie `31.08. 19:00 → 01.09. 09:00` bleibt intern unverändert gespeichert. In der Tagesansicht des Verlaufs wird davon am 01.09. nur der Anteil `00:00 → 09:00` angezeigt. Beginnt am 01.09. um 19:00 die nächste Session, erscheint zusätzlich `19:00 → 24:00`.
+
+Damit zeigt ein typischer 14:10-Tag beispielsweise:
+
+- **00:00–09:00** – 9 h Fasten
+- **19:00–24:00** – 5 h Fasten
+- **Fastenzeit an diesem Tag: 14 h**
+
+### Bearbeiten und Nachtragen
+
+Die Tagesabschnitte sind nur eine Darstellung. Ein Tipp auf einen Abschnitt öffnet weiterhin die vollständige zugrunde liegende Fastenphase mit ihrem echten Beginn und Ende. Auch beim Nachtragen werden weiterhin vollständige Fastenphasen erfasst.
+
+### Historische Ziele
+
+Der damalige Zielwert bleibt sichtbar. Falls innerhalb eines Kalendertags durch einen Planwechsel unterschiedliche Ziele vorkommen, weist Mampfo darauf hin.
+
+### Daten und Update
+
+- keine Migration der bestehenden Fasten-Sessions erforderlich
+- bestehende Fastenphasen bleiben unverändert
+- Tagebuch, Lebensmittel, Rezepte und Fastenpläne bleiben unverändert
+- Datenmodell bleibt Version 4
+- Service-Worker-Cache auf v0.4.2.1 aktualisiert
 
 ## Neu in v0.4.2 – Tatsächliche Fastenphasen und Verlauf
 

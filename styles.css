@@ -1195,3 +1195,67 @@ button { cursor: pointer; }
   .fasting-history-card .chev { display: none; }
   .fasting-history-duration { grid-column: 3; grid-row: 1; }
 }
+
+/* v0.4.2.1 – Fastenverlauf nach Kalendertagen */
+.fasting-day-card {
+  border: 1px solid #e2ddeb;
+  border-radius: 20px;
+  overflow: hidden;
+  background: linear-gradient(145deg, rgba(245,241,249,.92), rgba(255,255,255,.94));
+  box-shadow: 0 8px 22px rgba(83, 72, 105, .05);
+}
+.fasting-day-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 13px 14px 10px;
+}
+.fasting-day-head strong, .fasting-day-head small { display: block; }
+.fasting-day-head strong { font-size: .86rem; }
+.fasting-day-head small { margin-top: 3px; color: var(--text-3); font-size: .65rem; }
+.fasting-day-total {
+  padding: 6px 9px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.78);
+  color: #6b6283;
+  font-size: .78rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+.fasting-day-segments { display: grid; gap: 1px; border-top: 1px solid rgba(226,221,235,.72); border-bottom: 1px solid rgba(226,221,235,.72); }
+.fasting-day-segment {
+  width: 100%;
+  border: 0;
+  padding: 10px 13px;
+  background: rgba(255,255,255,.58);
+  display: grid;
+  grid-template-columns: 38px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  color: var(--text);
+  text-align: left;
+}
+.fasting-day-segment + .fasting-day-segment { border-top: 1px solid rgba(226,221,235,.68); }
+.fasting-day-segment:active { background: rgba(238,233,245,.9); }
+.fasting-day-segment .fasting-history-moon { width: 38px; height: 38px; border-radius: 13px; }
+.fasting-day-segment-main strong, .fasting-day-segment-main small { display: block; }
+.fasting-day-segment-main strong { font-size: .82rem; }
+.fasting-day-segment-main small { margin-top: 3px; color: var(--text-3); font-size: .68rem; }
+.fasting-day-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 14px 12px;
+  color: var(--text-2);
+  font-size: .72rem;
+}
+.fasting-day-footer strong { color: #6b6283; font-size: .8rem; }
+
+@media (max-width: 520px) {
+  .fasting-day-head { align-items: flex-start; }
+  .fasting-day-total { font-size: .72rem; }
+  .fasting-day-segment { grid-template-columns: 36px 1fr; }
+  .fasting-day-segment .chev { display: none; }
+}

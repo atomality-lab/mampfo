@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const CFG = window.APP_CONFIG || { appName: 'Mampfo', version: '0.4.2' };
+  const CFG = window.APP_CONFIG || { appName: 'Mampfo', version: '0.4.2.1' };
   const STORAGE = {
     settings: 'mampfo.settings.v2',
     entries: 'mampfo.entries.v2',
@@ -2686,7 +2686,70 @@
   }
 
   function fastingHistoryDate(date) {
-    return new Intl.DateTimeFormat('de-DE', { weekday: 'long', day: '2-digit', month: '2-digit' }).format(date);
+    return new Intl.DateTimeFormat('de-DE', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' }).format(date);
+  }
+
+  function localDayKey(date) {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  }
+
+  function nextLocalDayStart(date) {
+    const next = startOfLocalDay(date);
+    next.setDate(next.getDate() + 1);
+    return next;
+  }
+
+  function fastingHistoryDays(sessions) {
+    const days = new Map();
+    sessions.forEach(session => {
+      const sessionStart = new Date(session.startAt);
+      const sessionEnd = new Date(session.endAt);
+      if (Number.isNaN(sessionStart.getTime()) || Number.isNaN(sessionEnd.getTime()) || sessionEnd <= sessionStart) return;
+
+      let cursor = new Date(sessionStart);
+      let guard = 0;
+      while (cursor < sessionEnd && guard++ < 400) {
+        const dayStart = startOfLocalDay(cursor);
+        const dayEnd = nextLocalDayStart(dayStart);
+        const segmentStart = new Date(Math.max(sessionStart.getTime(), dayStart.getTime()));
+        const segmentEnd = new Date(Math.min(sessionEnd.getTime(), dayEnd.getTime()));
+        if (segmentEnd <= segmentStart) break;
+
+        const key = localDayKey(dayStart);
+        if (!days.has(key)) days.set(key, { key, date: dayStart, segments: [], totalMinutes: 0 });
+        const day = days.get(key);
+        const minutes = (segmentEnd - segmentStart) / 60000;
+        day.segments.push({
+          sessionId: session.id,
+          start: segmentStart,
+          end: segmentEnd,
+          dayStart,
+          dayEnd,
+          minutes,
+          targetMinutes: Number(session.targetMinutes || 0)
+        });
+        day.totalMinutes += minutes;
+        cursor = new Date(segmentEnd);
+      }
+    });
+
+    return [...days.values()]
+      .map(day => ({ ...day, segments: day.segments.sort((a, b) => a.start - b.start) }))
+      .sort((a, b) => b.date - a.date);
+  }
+
+  function fastingSegmentClock(segment, edge) {
+    const value = edge === 'start' ? segment.start : segment.end;
+    if (edge === 'start' && value.getTime() === segment.dayStart.getTime()) return '00:00';
+    if (edge === 'end' && value.getTime() === segment.dayEnd.getTime()) return '24:00';
+    return clockText(value);
+  }
+
+  function fastingDayTargetText(day) {
+    const targets = [...new Set(day.segments.map(segment => Number(segment.targetMinutes || 0)).filter(value => value > 0))];
+    if (targets.length === 1) return ` · Ziel ${durationText(targets[0])}`;
+    if (targets.length > 1) return ' · verschiedene Ziele';
+    return '';
   }
 
   function fastingHistoryMarkup() {
@@ -2694,24 +2757,32 @@
     const sessions = state.fastingSessions
       .filter(session => !session.deleted && session.endAt)
       .sort((a, b) => new Date(b.startAt) - new Date(a.startAt));
+    const days = fastingHistoryDays(sessions);
     return `<section class="fasting-history-head">
-      <div><h2>Fastenverlauf</h2><p>Tatsächliche Fastenzeiten, neueste zuerst.</p></div>
+      <div><h2>Fastenverlauf</h2><p>Fastenzeit je Kalendertag. Tippe einen Zeitraum an, um die vollständige Fastenphase zu bearbeiten.</p></div>
       <button type="button" class="secondary-button compact-action" id="add-fasting-session">${icon('plus')} Nachtragen</button>
     </section>
-    ${sessions.length ? `<section class="fasting-history-list">${sessions.map(session => {
-      const start = new Date(session.startAt);
-      const end = new Date(session.endAt);
-      return `<button type="button" class="fasting-history-card" data-fasting-session="${esc(session.id)}">
-        <span class="fasting-history-moon">${icon('moon')}</span>
-        <span class="fasting-history-main">
-          <strong>${esc(fastingHistoryDate(start))}</strong>
-          <span>${clockText(start)} → ${clockText(end)}${start.toDateString() !== end.toDateString() ? ' · nächster Tag' : ''}</span>
-          <small>Ziel: ${durationText(session.targetMinutes || 0)}</small>
-        </span>
-        <span class="fasting-history-duration">${durationText(fastingDurationMinutes(session))}</span>
-        <span class="chev">›</span>
-      </button>`;
-    }).join('')}</section>` : `<section class="fasting-history-placeholder"><div>${icon('list')}</div><h2>Noch keine Fastenphasen</h2><p>Abgeschlossene Fastenphasen erscheinen automatisch hier. Du kannst Zeiten auch nachträglich ergänzen.</p></section>`}`;
+    ${days.length ? `<section class="fasting-history-list">${days.map(day => `
+      <article class="fasting-day-card">
+        <header class="fasting-day-head">
+          <div>
+            <strong>${esc(fastingHistoryDate(day.date))}</strong>
+            <small>${day.segments.length === 1 ? '1 Fastenzeitraum' : `${day.segments.length} Fastenzeiträume`}${fastingDayTargetText(day)}</small>
+          </div>
+          <span class="fasting-day-total">${durationText(day.totalMinutes)}</span>
+        </header>
+        <div class="fasting-day-segments">
+          ${day.segments.map(segment => `<button type="button" class="fasting-day-segment" data-fasting-session="${esc(segment.sessionId)}">
+            <span class="fasting-history-moon">${icon('moon')}</span>
+            <span class="fasting-day-segment-main">
+              <strong>${fastingSegmentClock(segment, 'start')} – ${fastingSegmentClock(segment, 'end')}</strong>
+              <small>${durationText(segment.minutes)} Fasten</small>
+            </span>
+            <span class="chev">›</span>
+          </button>`).join('')}
+        </div>
+        <footer class="fasting-day-footer"><span>Fastenzeit an diesem Tag</span><strong>${durationText(day.totalMinutes)}</strong></footer>
+      </article>`).join('')}</section>` : `<section class="fasting-history-placeholder"><div>${icon('list')}</div><h2>Noch keine Fastenzeiten</h2><p>Abgeschlossene Fastenphasen werden hier nach Kalendertagen aufgeteilt. Du kannst vollständige Fastenphasen auch nachträglich ergänzen.</p></section>`}`;
   }
 
   function openFastingSessionEditor(sessionId = null) {

@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.4.2.1 – Fastenverlauf nach Kalendertagen
+
+### Geändert
+- Fastenverlauf wird nach Kalendertagen gruppiert statt nach Startdatum einer vollständigen Fastenphase.
+- Fastenphasen über Mitternacht werden für die Anzeige automatisch an der Tagesgrenze aufgeteilt.
+- Ein Kalendertag zeigt jeden Fastenzeitraum separat, z. B. **00:00–09:00** und **19:00–24:00**.
+- Die gesamte **Fastenzeit an diesem Tag** wird automatisch summiert.
+- Der historische Zielwert bleibt im Tagesblock sichtbar; unterschiedliche Ziele an einem Tag werden kenntlich gemacht.
+- Ein Tipp auf einen Tagesabschnitt öffnet weiterhin die vollständige zugrunde liegende Fastenphase zum Bearbeiten.
+- Nachtragen und Bearbeiten bleiben auf Ebene vollständiger Fastenphasen.
+- Service-Worker-Cache auf v0.4.2.1 aktualisiert.
+
+### Bestehende Daten
+- keine Änderung am Session-Datenmodell
+- bestehende Fastenphasen, Pläne, Tagebuchdaten, Lebensmittel und Rezepte bleiben unverändert
+- Datenmodell bleibt Version 4
+
+
 ## v0.4.2 – Fastenverlauf und tatsächliche Fastenzeiten
 
 ### Neu
