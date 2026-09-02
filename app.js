@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const CFG = window.APP_CONFIG || { appName: 'Mampfo', version: '0.4.1' };
+  const CFG = window.APP_CONFIG || { appName: 'Mampfo', version: '0.4.2' };
   const STORAGE = {
     settings: 'mampfo.settings.v2',
     entries: 'mampfo.entries.v2',
@@ -114,11 +114,25 @@
       createdAt: plan.createdAt || plan.activeFrom || new Date().toISOString(),
       updatedAt: plan.updatedAt || plan.createdAt || new Date().toISOString()
     }));
+    const fastingSessions = load(STORAGE.fastingSessions, []).map(session => ({
+      id: session.id || uuid(),
+      startAt: session.startAt || new Date().toISOString(),
+      endAt: session.endAt || null,
+      plannedEndAt: session.plannedEndAt || session.endAt || null,
+      targetMinutes: Number(session.targetMinutes || 0),
+      planId: session.planId || null,
+      startSource: session.startSource || 'manual',
+      endSource: session.endSource || (session.endAt ? 'manual' : null),
+      cycleKey: session.cycleKey || null,
+      deleted: Boolean(session.deleted),
+      createdAt: session.createdAt || session.startAt || new Date().toISOString(),
+      updatedAt: session.updatedAt || session.createdAt || new Date().toISOString()
+    }));
     localStorage.setItem(STORAGE.entries, JSON.stringify(entries));
     localStorage.setItem(STORAGE.foods, JSON.stringify(foods));
     localStorage.setItem(STORAGE.recipes, JSON.stringify(recipes));
     localStorage.setItem(STORAGE.fastPlans, JSON.stringify(fastPlans));
-    if (!has(STORAGE.fastingSessions)) localStorage.setItem(STORAGE.fastingSessions, '[]');
+    localStorage.setItem(STORAGE.fastingSessions, JSON.stringify(fastingSessions));
     localStorage.setItem(STORAGE.dataVersion, '4');
   }
 
@@ -147,6 +161,7 @@
     savedFoods: load(STORAGE.foods, []),
     recipes: load(STORAGE.recipes, []),
     fastPlans: load(STORAGE.fastPlans, []),
+    fastingSessions: load(STORAGE.fastingSessions, []),
     onboarded: localStorage.getItem(STORAGE.onboarded) === 'yes'
   };
 
@@ -208,6 +223,21 @@
     updatedAt: plan.updatedAt || plan.createdAt || new Date().toISOString()
   }));
 
+  state.fastingSessions = state.fastingSessions.map(session => ({
+    id: session.id || uuid(),
+    startAt: session.startAt || new Date().toISOString(),
+    endAt: session.endAt || null,
+    plannedEndAt: session.plannedEndAt || session.endAt || null,
+    targetMinutes: Number(session.targetMinutes || 0),
+    planId: session.planId || null,
+    startSource: session.startSource || 'manual',
+    endSource: session.endSource || (session.endAt ? 'manual' : null),
+    cycleKey: session.cycleKey || null,
+    deleted: Boolean(session.deleted),
+    createdAt: session.createdAt || session.startAt || new Date().toISOString(),
+    updatedAt: session.updatedAt || session.createdAt || new Date().toISOString()
+  }));
+
   const app = document.getElementById('app');
   const modalRoot = document.getElementById('modal-root');
   const toastRoot = document.getElementById('toast-root');
@@ -220,6 +250,7 @@
     localStorage.setItem(STORAGE.foods, JSON.stringify(state.savedFoods));
     localStorage.setItem(STORAGE.recipes, JSON.stringify(state.recipes));
     localStorage.setItem(STORAGE.fastPlans, JSON.stringify(state.fastPlans));
+    localStorage.setItem(STORAGE.fastingSessions, JSON.stringify(state.fastingSessions));
     localStorage.setItem(STORAGE.onboarded, state.onboarded ? 'yes' : 'no');
     localStorage.setItem(STORAGE.dataVersion, '4');
   }
@@ -504,6 +535,32 @@
     return Math.max(0, Math.min(100, (Number(value) / Number(target)) * 100));
   }
 
+  function todayFastStatusMarkup(isToday) {
+    if (!isToday) return `<button class="today-chip today-return-chip" id="go-today">↩ <span>Zum heutigen Tag</span></button>`;
+    const now = new Date();
+    const plan = activeFastPlan(now);
+    if (!plan) return `<span class="today-chip today-status-chip"><strong>Heute</strong></span>`;
+    const status = fastingStatus(now);
+    if (!status) return `<span class="today-chip today-status-chip"><strong>Heute</strong></span>`;
+    const isFast = status.phase === 'fasting';
+    return `<span class="today-chip today-status-chip ${isFast ? 'is-fasting' : 'is-eating'}" id="today-fast-status">
+      <strong>Heute</strong><span class="today-status-separator">·</span><span class="today-phase">${isFast ? icon('moon') : icon('bowl')} ${isFast ? 'Fasten' : 'Essensphase'}</span>
+    </span>`;
+  }
+
+  function updateTodayFastStatus() {
+    if (state.view !== 'today' || state.selectedDate !== todayISO()) return;
+    const node = document.getElementById('today-fast-status');
+    const plan = activeFastPlan(new Date());
+    if (!plan) return;
+    const status = fastingStatus(new Date());
+    if (!status || !node) return;
+    const isFast = status.phase === 'fasting';
+    node.classList.toggle('is-fasting', isFast);
+    node.classList.toggle('is-eating', !isFast);
+    node.innerHTML = `<strong>Heute</strong><span class="today-status-separator">·</span><span class="today-phase">${isFast ? icon('moon') : icon('bowl')} ${isFast ? 'Fasten' : 'Essensphase'}</span>`;
+  }
+
   function renderToday() {
     const entries = dailyEntries(state.selectedDate);
     const totals = dailyTotals(state.selectedDate);
@@ -519,7 +576,7 @@
         <div class="date-label">${esc(displayDate(state.selectedDate))}</div>
         <button class="icon-button" id="next-day" aria-label="Nächster Tag">${icon('next')}</button>
       </div>
-      ${!isToday ? `<button class="today-chip" id="go-today">Heute</button>` : `<span class="today-chip" aria-hidden="true">Heute</span>`}
+      ${todayFastStatusMarkup(isToday)}
 
       <section class="summary-grid" aria-label="Tageswerte">
         ${summaryCard('calories', icon('flame'), `<strong>${fmt(totals.calories, 0)}</strong><span>/ ${fmt(state.settings.dailyCalories, 0)} kcal</span>`, progress(totals.calories, state.settings.dailyCalories))}
@@ -1378,7 +1435,7 @@
         <span class="chev">›</span>
       </button>
 
-      <div class="settings-note">${icon('rocket')}<br>Rezepte und Fastentimer sind verfügbar. Fastenverlauf und Auswertung folgen in den nächsten Versionen.</div>
+      <div class="settings-note">${icon('rocket')}<br>Rezepte, Fastentimer und Fastenverlauf sind verfügbar. Die Auswertung folgt in einer späteren Version.</div>
       <div class="version">${esc(CFG.appName)} · Version ${esc(CFG.version)}</div>
     </main>${bottomNav('')}`;
 
@@ -2409,6 +2466,421 @@
     return candidate;
   }
 
+
+  function fastingWindowForDate(plan, dayDate) {
+    const anchor = dateAtClock(dayDate, plan.anchorTime);
+    if (!anchor) return null;
+    const start = plan.anchorType === 'fastingStart'
+      ? anchor
+      : addDateMinutes(anchor, plan.eatingMinutes);
+    const end = addDateMinutes(start, plan.fastingMinutes);
+    return { start, end };
+  }
+
+  function fastingCycleKey(plan, start) {
+    return `${plan.id}:${new Date(start).toISOString()}`;
+  }
+
+  function planEffectiveAt(date) {
+    return [...state.fastPlans]
+      .filter(plan => new Date(plan.activeFrom).getTime() <= date.getTime())
+      .sort((a, b) => new Date(a.activeFrom) - new Date(b.activeFrom))
+      .at(-1) || null;
+  }
+
+  function startOfLocalDay(date) {
+    const result = new Date(date);
+    result.setHours(0, 0, 0, 0);
+    return result;
+  }
+
+  function sessionsOverlap(start, end, excludeId = null) {
+    const startMs = new Date(start).getTime();
+    const endMs = new Date(end).getTime();
+    return state.fastingSessions.some(session => {
+      if (session.deleted || session.id === excludeId) return false;
+      const s = new Date(session.startAt).getTime();
+      const e = new Date(session.endAt || session.plannedEndAt || session.startAt).getTime();
+      return s < endMs && e > startMs;
+    });
+  }
+
+  function synchronizeFastingSessions(now = new Date()) {
+    if (!state.fastPlans.length) return false;
+    let changed = false;
+    const plans = [...state.fastPlans].sort((a, b) => new Date(a.activeFrom) - new Date(b.activeFrom));
+    const horizon = addDateMinutes(now, 1440);
+    plans.forEach((plan, index) => {
+      const effectiveStart = new Date(plan.activeFrom);
+      const effectiveEnd = plans[index + 1] ? new Date(plans[index + 1].activeFrom) : horizon;
+      if (effectiveStart.getTime() > now.getTime()) return;
+
+      let cursor = startOfLocalDay(addDateMinutes(effectiveStart, index === 0 ? -1440 : 0));
+      const endCursor = startOfLocalDay(addDateMinutes(new Date(Math.min(horizon.getTime(), effectiveEnd.getTime())), 1440));
+      let guard = 0;
+      while (cursor.getTime() <= endCursor.getTime() && guard++ < 800) {
+        const raw = fastingWindowForDate(plan, cursor);
+        cursor = addDateMinutes(cursor, 1440);
+        if (!raw) continue;
+        if (raw.end.getTime() <= effectiveStart.getTime()) continue;
+        if (raw.start.getTime() >= effectiveEnd.getTime()) continue;
+
+        let sessionStart = raw.start;
+        if (raw.start.getTime() < effectiveStart.getTime()) {
+          if (index > 0) continue;
+          sessionStart = effectiveStart;
+        }
+        const plannedEnd = new Date(Math.min(raw.end.getTime(), effectiveEnd.getTime()));
+        if (sessionStart.getTime() > now.getTime()) continue;
+
+        const key = fastingCycleKey(plan, raw.start);
+        const existing = state.fastingSessions.find(session => session.cycleKey === key);
+        if (existing) {
+          if (!existing.deleted && !existing.endAt && existing.plannedEndAt && now.getTime() >= new Date(existing.plannedEndAt).getTime()) {
+            existing.endAt = existing.plannedEndAt;
+            existing.endSource = existing.endSource || 'schedule';
+            existing.updatedAt = now.toISOString();
+            changed = true;
+          }
+          continue;
+        }
+
+        if (state.fastingSessions.some(session => session.deleted && session.cycleKey === key)) continue;
+        if (sessionsOverlap(sessionStart, plannedEnd)) continue;
+
+        const ended = now.getTime() >= plannedEnd.getTime();
+        const stamp = now.toISOString();
+        state.fastingSessions.push({
+          id: uuid(),
+          startAt: sessionStart.toISOString(),
+          endAt: ended ? plannedEnd.toISOString() : null,
+          plannedEndAt: plannedEnd.toISOString(),
+          targetMinutes: Number(plan.fastingMinutes || 0),
+          planId: plan.id,
+          startSource: 'schedule',
+          endSource: ended ? 'schedule' : null,
+          cycleKey: key,
+          deleted: false,
+          createdAt: stamp,
+          updatedAt: stamp
+        });
+        changed = true;
+      }
+    });
+
+    state.fastingSessions.forEach(session => {
+      if (session.deleted || session.endAt || !session.plannedEndAt) return;
+      if (now.getTime() >= new Date(session.plannedEndAt).getTime()) {
+        session.endAt = session.plannedEndAt;
+        session.endSource = session.endSource || 'schedule';
+        session.updatedAt = now.toISOString();
+        changed = true;
+      }
+    });
+
+    if (changed) persist();
+    return changed;
+  }
+
+  function activeFastingSession(now = new Date()) {
+    synchronizeFastingSessions(now);
+    return state.fastingSessions
+      .filter(session => !session.deleted && !session.endAt && new Date(session.startAt).getTime() <= now.getTime())
+      .sort((a, b) => new Date(a.startAt) - new Date(b.startAt))
+      .at(-1) || null;
+  }
+
+  function nextScheduledFastingWindow(plan, now = new Date()) {
+    if (!plan) return null;
+    const day = startOfLocalDay(now);
+    const candidates = [];
+    for (let offset = -1; offset <= 2; offset += 1) {
+      const raw = fastingWindowForDate(plan, addDateMinutes(day, offset * 1440));
+      if (raw && raw.end.getTime() > now.getTime()) candidates.push(raw);
+    }
+    return candidates.sort((a, b) => a.start - b.start)[0] || null;
+  }
+
+  function nextScheduledFastingStart(plan, now = new Date()) {
+    if (!plan) return null;
+    const day = startOfLocalDay(now);
+    const candidates = [];
+    for (let offset = -1; offset <= 2; offset += 1) {
+      const raw = fastingWindowForDate(plan, addDateMinutes(day, offset * 1440));
+      if (raw && raw.start.getTime() > now.getTime()) candidates.push(raw.start);
+    }
+    return candidates.sort((a, b) => a - b)[0] || null;
+  }
+
+  function fastingStatus(now = new Date()) {
+    const plan = activeFastPlan(now);
+    if (!plan) return null;
+    synchronizeFastingSessions(now);
+    const active = activeFastingSession(now);
+    if (active) {
+      const start = new Date(active.startAt);
+      const end = new Date(active.plannedEndAt || addDateMinutes(start, active.targetMinutes || plan.fastingMinutes));
+      const totalMinutes = Math.max(1, (end - start) / 60000);
+      return {
+        phase: 'fasting',
+        plan,
+        session: active,
+        start,
+        end,
+        totalMinutes,
+        elapsedMinutes: Math.max(0, (now - start) / 60000),
+        remainingMinutes: Math.max(0, (end - now) / 60000)
+      };
+    }
+
+    const scheduled = phaseForPlan(plan, now);
+    if (!scheduled) return null;
+    if (scheduled.phase === 'fasting') {
+      const endedEarly = state.fastingSessions
+        .filter(session => !session.deleted && session.endAt && session.planId === plan.id)
+        .filter(session => {
+          const end = new Date(session.endAt);
+          const planned = new Date(session.plannedEndAt || session.endAt);
+          return end.getTime() <= now.getTime() && planned.getTime() > now.getTime();
+        })
+        .sort((a, b) => new Date(a.endAt) - new Date(b.endAt))
+        .at(-1);
+      if (endedEarly) {
+        const start = new Date(endedEarly.endAt);
+        const end = nextScheduledFastingStart(plan, now) || addDateMinutes(start, plan.eatingMinutes);
+        return {
+          phase: 'eating',
+          plan,
+          session: null,
+          start,
+          end,
+          totalMinutes: Math.max(1, (end - start) / 60000),
+          elapsedMinutes: Math.max(0, (now - start) / 60000),
+          remainingMinutes: Math.max(0, (end - now) / 60000),
+          override: 'fast-ended-early'
+        };
+      }
+    }
+    return { ...scheduled, plan, session: null };
+  }
+
+  function localDateTimeInputValue(value) {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    const hh = String(date.getHours()).padStart(2, '0');
+    const mm = String(date.getMinutes()).padStart(2, '0');
+    return `${y}-${m}-${d}T${hh}:${mm}`;
+  }
+
+  function parseLocalDateTimeInput(value) {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  function fastingDurationMinutes(session) {
+    if (!session?.endAt) return 0;
+    return Math.max(0, (new Date(session.endAt) - new Date(session.startAt)) / 60000);
+  }
+
+  function fastingHistoryDate(date) {
+    return new Intl.DateTimeFormat('de-DE', { weekday: 'long', day: '2-digit', month: '2-digit' }).format(date);
+  }
+
+  function fastingHistoryMarkup() {
+    synchronizeFastingSessions(new Date());
+    const sessions = state.fastingSessions
+      .filter(session => !session.deleted && session.endAt)
+      .sort((a, b) => new Date(b.startAt) - new Date(a.startAt));
+    return `<section class="fasting-history-head">
+      <div><h2>Fastenverlauf</h2><p>Tatsächliche Fastenzeiten, neueste zuerst.</p></div>
+      <button type="button" class="secondary-button compact-action" id="add-fasting-session">${icon('plus')} Nachtragen</button>
+    </section>
+    ${sessions.length ? `<section class="fasting-history-list">${sessions.map(session => {
+      const start = new Date(session.startAt);
+      const end = new Date(session.endAt);
+      return `<button type="button" class="fasting-history-card" data-fasting-session="${esc(session.id)}">
+        <span class="fasting-history-moon">${icon('moon')}</span>
+        <span class="fasting-history-main">
+          <strong>${esc(fastingHistoryDate(start))}</strong>
+          <span>${clockText(start)} → ${clockText(end)}${start.toDateString() !== end.toDateString() ? ' · nächster Tag' : ''}</span>
+          <small>Ziel: ${durationText(session.targetMinutes || 0)}</small>
+        </span>
+        <span class="fasting-history-duration">${durationText(fastingDurationMinutes(session))}</span>
+        <span class="chev">›</span>
+      </button>`;
+    }).join('')}</section>` : `<section class="fasting-history-placeholder"><div>${icon('list')}</div><h2>Noch keine Fastenphasen</h2><p>Abgeschlossene Fastenphasen erscheinen automatisch hier. Du kannst Zeiten auch nachträglich ergänzen.</p></section>`}`;
+  }
+
+  function openFastingSessionEditor(sessionId = null) {
+    synchronizeFastingSessions(new Date());
+    const session = sessionId ? state.fastingSessions.find(item => item.id === sessionId && !item.deleted) : null;
+    const activePlan = activeFastPlan(new Date());
+    const now = new Date();
+    const defaultEnd = now;
+    const defaultStart = addDateMinutes(defaultEnd, -(activePlan?.fastingMinutes || 840));
+    const startValue = localDateTimeInputValue(session?.startAt || defaultStart);
+    const endValue = localDateTimeInputValue(session?.endAt || defaultEnd);
+    modalRoot.innerHTML = `<div class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="fast-session-editor-title"><div class="modal">
+      <h2 id="fast-session-editor-title">${session ? 'Fastenphase bearbeiten' : 'Fastenphase nachtragen'}</h2>
+      <label class="modal-field"><span>Beginn</span><input id="fast-session-start" type="datetime-local" value="${esc(startValue)}"></label>
+      <label class="modal-field"><span>Ende</span><input id="fast-session-end" type="datetime-local" value="${esc(endValue)}"></label>
+      <div class="fasting-session-preview" id="fast-session-preview"></div>
+      <div class="modal-actions">
+        <button class="primary-button" id="save-fast-session">${session ? 'Änderungen speichern' : 'Fastenphase speichern'}</button>
+        ${session ? '<button class="danger-soft-button" id="delete-fast-session">Fastenphase löschen</button>' : ''}
+        <button class="secondary-button" id="cancel-fast-session">Abbrechen</button>
+      </div>
+    </div></div>`;
+
+    const update = () => {
+      const start = parseLocalDateTimeInput(document.getElementById('fast-session-start').value);
+      const end = parseLocalDateTimeInput(document.getElementById('fast-session-end').value);
+      const box = document.getElementById('fast-session-preview');
+      if (!start || !end || end <= start) {
+        box.innerHTML = '<small>Bitte Beginn und Ende prüfen.</small>';
+        return;
+      }
+      box.innerHTML = `<small>Dauer</small><strong>${durationText((end - start) / 60000)}</strong>`;
+    };
+    document.getElementById('fast-session-start').addEventListener('input', update);
+    document.getElementById('fast-session-end').addEventListener('input', update);
+    document.getElementById('cancel-fast-session').onclick = () => { modalRoot.innerHTML = ''; };
+    document.getElementById('save-fast-session').onclick = () => {
+      const start = parseLocalDateTimeInput(document.getElementById('fast-session-start').value);
+      const end = parseLocalDateTimeInput(document.getElementById('fast-session-end').value);
+      if (!start || !end || end <= start) return showToast('Bitte Beginn und Ende prüfen.');
+      if (sessionsOverlap(start, end, session?.id || null)) return showToast('Diese Fastenphase überschneidet sich mit einer vorhandenen Fastenphase.');
+      const plan = planEffectiveAt(start) || activeFastPlan(new Date());
+      const stamp = new Date().toISOString();
+      if (session) {
+        session.startAt = start.toISOString();
+        session.endAt = end.toISOString();
+        session.startSource = 'manual';
+        session.endSource = 'manual';
+        session.updatedAt = stamp;
+      } else {
+        state.fastingSessions.push({
+          id: uuid(),
+          startAt: start.toISOString(),
+          endAt: end.toISOString(),
+          plannedEndAt: end.toISOString(),
+          targetMinutes: Number(plan?.fastingMinutes || (end - start) / 60000),
+          planId: plan?.id || null,
+          startSource: 'manual',
+          endSource: 'manual',
+          cycleKey: null,
+          deleted: false,
+          createdAt: stamp,
+          updatedAt: stamp
+        });
+      }
+      persist();
+      modalRoot.innerHTML = '';
+      state.fastingTab = 'history';
+      renderFasting(); bindCommon();
+      showToast(session ? 'Fastenphase aktualisiert.' : 'Fastenphase nachgetragen.');
+    };
+    document.getElementById('delete-fast-session')?.addEventListener('click', () => {
+      modalRoot.innerHTML = `<div class="modal-backdrop" role="dialog" aria-modal="true"><div class="modal"><h2>Fastenphase löschen?</h2><p>Diese aufgezeichnete Fastenphase wird aus dem Verlauf entfernt.</p><div class="modal-actions"><button class="danger-button" id="confirm-delete-fast-session">Löschen</button><button class="secondary-button" id="cancel-delete-fast-session">Abbrechen</button></div></div></div>`;
+      document.getElementById('cancel-delete-fast-session').onclick = () => { modalRoot.innerHTML = ''; };
+      document.getElementById('confirm-delete-fast-session').onclick = () => {
+        if (session.cycleKey) session.deleted = true;
+        else state.fastingSessions = state.fastingSessions.filter(item => item.id !== session.id);
+        persist();
+        modalRoot.innerHTML = '';
+        renderFasting(); bindCommon();
+        showToast('Fastenphase gelöscht.');
+      };
+    });
+    update();
+  }
+
+  function beginFastNow() {
+    const now = new Date();
+    const plan = activeFastPlan(now);
+    if (!plan) return showToast('Bitte zuerst einen Fastenplan einrichten.');
+    synchronizeFastingSessions(now);
+    if (activeFastingSession(now)) return showToast('Eine Fastenphase läuft bereits.');
+    const nextWindow = nextScheduledFastingWindow(plan, now);
+    let plannedEnd = nextWindow?.end || addDateMinutes(now, plan.fastingMinutes);
+    if (plannedEnd <= now) plannedEnd = addDateMinutes(now, plan.fastingMinutes);
+    const stamp = now.toISOString();
+    state.fastingSessions.push({
+      id: uuid(),
+      startAt: stamp,
+      endAt: null,
+      plannedEndAt: plannedEnd.toISOString(),
+      targetMinutes: Number(plan.fastingMinutes),
+      planId: plan.id,
+      startSource: 'manual',
+      endSource: null,
+      cycleKey: null,
+      deleted: false,
+      createdAt: stamp,
+      updatedAt: stamp
+    });
+    persist();
+    renderFasting(); bindCommon();
+    showToast('Fastenphase gestartet.');
+  }
+
+  function endFastNow() {
+    const now = new Date();
+    const session = activeFastingSession(now);
+    if (!session) return showToast('Aktuell läuft keine Fastenphase.');
+    session.endAt = now.toISOString();
+    session.endSource = 'manual';
+    session.updatedAt = now.toISOString();
+    persist();
+    renderFasting(); bindCommon();
+    showToast(`Fasten beendet: ${durationText(fastingDurationMinutes(session))}.`);
+  }
+
+  function editActiveFastingSession() {
+    const now = new Date();
+    const session = activeFastingSession(now);
+    if (!session) return;
+    modalRoot.innerHTML = `<div class="modal-backdrop" role="dialog" aria-modal="true"><div class="modal">
+      <h2>Laufende Fastenphase bearbeiten</h2>
+      <label class="modal-field"><span>Fastenbeginn</span><input id="active-fast-start" type="datetime-local" value="${esc(localDateTimeInputValue(session.startAt))}"></label>
+      <label class="modal-field"><span>Geplantes Ende</span><input id="active-fast-end" type="datetime-local" value="${esc(localDateTimeInputValue(session.plannedEndAt))}"></label>
+      <div class="fasting-session-preview" id="active-fast-preview"></div>
+      <div class="modal-actions"><button class="primary-button" id="save-active-fast">Zeiten speichern</button><button class="secondary-button" id="cancel-active-fast">Abbrechen</button></div>
+    </div></div>`;
+    const update = () => {
+      const start = parseLocalDateTimeInput(document.getElementById('active-fast-start').value);
+      const end = parseLocalDateTimeInput(document.getElementById('active-fast-end').value);
+      const box = document.getElementById('active-fast-preview');
+      if (!start || !end || end <= start) return box.innerHTML = '<small>Bitte Zeiten prüfen.</small>';
+      box.innerHTML = `<small>Geplante Dauer dieser Phase</small><strong>${durationText((end - start) / 60000)}</strong>`;
+    };
+    document.getElementById('active-fast-start').addEventListener('input', update);
+    document.getElementById('active-fast-end').addEventListener('input', update);
+    document.getElementById('cancel-active-fast').onclick = () => { modalRoot.innerHTML = ''; };
+    document.getElementById('save-active-fast').onclick = () => {
+      const start = parseLocalDateTimeInput(document.getElementById('active-fast-start').value);
+      const end = parseLocalDateTimeInput(document.getElementById('active-fast-end').value);
+      if (!start || !end || end <= start) return showToast('Bitte Zeiten prüfen.');
+      if (sessionsOverlap(start, end, session.id)) return showToast('Diese Fastenphase überschneidet sich mit einer vorhandenen Fastenphase.');
+      session.startAt = start.toISOString();
+      session.plannedEndAt = end.toISOString();
+      session.startSource = 'manual';
+      session.updatedAt = new Date().toISOString();
+      if (end.getTime() <= Date.now()) {
+        session.endAt = end.toISOString();
+        session.endSource = 'manual';
+      }
+      persist();
+      modalRoot.innerHTML = '';
+      renderFasting(); bindCommon();
+      showToast('Fastenzeiten aktualisiert.');
+    };
+    update();
+  }
+
   function renderFastingTabs(active) {
     return `<div class="fasting-tabs" role="tablist" aria-label="Fastenbereiche">
       <button type="button" class="fasting-tab ${active === 'timer' ? 'active' : ''}" data-fasting-tab="timer">${icon('clock')} Timer</button>
@@ -2450,7 +2922,7 @@
     const tab = state.fastingTab || 'timer';
     let content = '';
     if (tab === 'timer') content = fastingTimerMarkup(activePlan, pending, now);
-    else if (tab === 'history') content = `<section class="fasting-history-placeholder"><div>${icon('list')}</div><h2>Fastenverlauf</h2><p>Die Aufzeichnung tatsächlicher Fastenphasen, Nachtragen und Bearbeiten folgt mit v0.4.2.</p></section>`;
+    else if (tab === 'history') content = fastingHistoryMarkup();
     else content = fastingPlanMarkup(activePlan, pending);
 
     app.innerHTML = `<main class="page fasting-page">
@@ -2465,10 +2937,21 @@
       renderFasting(); bindCommon();
     });
     if (tab === 'plan') bindFastingPlanPage(activePlan);
+    if (tab === 'history') {
+      document.getElementById('add-fasting-session')?.addEventListener('click', () => openFastingSessionEditor());
+      document.querySelectorAll('[data-fasting-session]').forEach(button => {
+        button.onclick = () => openFastingSessionEditor(button.dataset.fastingSession);
+      });
+    }
+    if (tab === 'timer') {
+      document.getElementById('begin-fast-now')?.addEventListener('click', beginFastNow);
+      document.getElementById('end-fast-now')?.addEventListener('click', endFastNow);
+      document.getElementById('edit-active-fast')?.addEventListener('click', editActiveFastingSession);
+    }
   }
 
   function fastingTimerMarkup(plan, pending, now) {
-    const phase = phaseForPlan(plan, now);
+    const phase = fastingStatus(now);
     if (!phase) return `<div class="settings-note">Der aktuelle Fastenplan konnte nicht berechnet werden.</div>`;
     const isFast = phase.phase === 'fasting';
     const progress = Math.max(0, Math.min(100, phase.elapsedMinutes / phase.totalMinutes * 100));
@@ -2483,6 +2966,11 @@
       ${isFast ? `<div class="fasting-secondary-time">noch ${durationText(phase.remainingMinutes, 'ceil')}</div>` : ''}
       <div class="fasting-progress"><span style="width:${progress.toFixed(2)}%"></span></div>
       <div class="fasting-end-text">${isFast ? 'Fasten endet' : 'Fasten beginnt'} um <strong>${clockText(phase.end)} Uhr</strong></div>
+      <div class="fasting-actions">
+        ${isFast
+          ? `<button type="button" class="primary-button" id="end-fast-now">${icon('bowl')} Fasten jetzt beenden</button><button type="button" class="secondary-button" id="edit-active-fast">${icon('edit')} Zeit bearbeiten</button>`
+          : `<button type="button" class="primary-button" id="begin-fast-now">${icon('moon')} Fasten jetzt beginnen</button>`}
+      </div>
     </section>
     <section class="fasting-plan-summary">
       <div class="fasting-plan-badge">${esc(planPresetLabel(plan))}</div>
@@ -2666,15 +3154,21 @@
   }
 
   window.setInterval(() => {
-    if (state.onboarded && state.view === 'fasting' && state.fastingTab === 'timer') {
+    if (!state.onboarded) return;
+    if (state.view === 'fasting' && state.fastingTab === 'timer') {
       renderFasting();
       bindCommon();
+    } else if (state.view === 'today' && state.selectedDate === todayISO()) {
+      updateTodayFastStatus();
     }
   }, 30000);
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden && state.onboarded && state.view === 'fasting' && state.fastingTab === 'timer') {
+    if (document.hidden || !state.onboarded) return;
+    if (state.view === 'fasting' && state.fastingTab === 'timer') {
       renderFasting();
       bindCommon();
+    } else if (state.view === 'today' && state.selectedDate === todayISO()) {
+      updateTodayFastStatus();
     }
   });
 

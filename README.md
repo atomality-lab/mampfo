@@ -1,9 +1,77 @@
-# Mampfo v0.4.1
+# Mampfo v0.4.2
 
 Mampfo ist eine persönliche, lokal gespeicherte PWA zum Ernährungstracking.
 
+## Neu in v0.4.2 – Tatsächliche Fastenphasen und Verlauf
 
-## Neu in v0.4.1 – Fastenplan und Timer
+v0.4.2 erweitert den Fastenplan aus v0.4.1 um echte, lokal gespeicherte Fasten-Sessions.
+
+### Fasten starten und beenden
+
+Im Timer kann eine Fastenphase unabhängig vom Standardplan bewusst früher gestartet oder beendet werden:
+
+- **Fasten jetzt beginnen**
+- **Fasten jetzt beenden**
+- **Zeit bearbeiten** für Beginn und geplantes Ende der laufenden Fastenphase
+
+Eine einmalige Abweichung verändert den allgemeinen 12:12-, 14:10-, 16:8- oder benutzerdefinierten Plan nicht. Der reguläre Rhythmus wird beim nächsten passenden Zyklus fortgesetzt.
+
+### Automatische Aufzeichnung
+
+Geplante Fastenphasen werden anhand des gespeicherten Plans rekonstruiert. Dadurch bleiben Fastenzeiten nachvollziehbar, auch wenn Mampfo während des Phasenwechsels geschlossen oder das Gerät im Standby war.
+
+Jede Fastenphase speichert unter anderem:
+
+- tatsächlichen Beginn
+- tatsächliches Ende
+- geplantes Ende
+- damaliges Fastenziel
+- verwendeten Fastenplan
+- Herkunft von Beginn und Ende (Plan oder manuell)
+
+Historische Fastenzeiten bleiben damit stabil, auch wenn der Fastenplan später geändert wird.
+
+### Verlauf
+
+Unter **Fasten → Verlauf** werden abgeschlossene Fastenphasen chronologisch angezeigt.
+
+Fastenphasen können:
+
+- geöffnet und bearbeitet
+- gelöscht
+- nachträglich ergänzt
+
+werden. Mampfo verhindert dabei überschneidende Fastenzeiträume.
+
+### Startseite
+
+Der bisherige breite „Heute“-Balken wurde durch einen kompakten, zentrierten Status ersetzt.
+
+Am aktuellen Tag zeigt Mampfo bei eingerichtetem Fastenplan:
+
+- **Heute · 🌙 Fasten**
+- **Heute · 🍴 Essensphase**
+
+Ohne Fastenplan erscheint nur **Heute**.
+
+Bei einem anderen ausgewählten Datum erscheint stattdessen:
+
+**↩ Zum heutigen Tag**
+
+Damit dient das Element gleichzeitig als schneller Rücksprung zum aktuellen Datum.
+
+### Daten und Update
+
+- bestehende Tagebuchdaten bleiben unverändert
+- gespeicherte Lebensmittel bleiben unverändert
+- Rezepte bleiben unverändert
+- Fastenpläne aus v0.4.1 bleiben erhalten
+- Fasten-Sessions werden unter `mampfo.fastingSessions.v4` gespeichert
+- Datenmodell bleibt Version 4
+- Fasten funktioniert weiterhin vollständig lokal und offline
+
+
+## v0.4.1 – Fastenplan und Timer
 
 Das Hauptregister **Fasten** ist jetzt aktiv. v0.4.1 bildet den ersten Schritt des Fastenmoduls und konzentriert sich bewusst auf Plan und Timer.
 
@@ -36,11 +104,7 @@ Während die App geöffnet ist, wird die Anzeige regelmäßig aktualisiert und b
 
 Der erste Fastenplan wird sofort aktiviert. Wird ein bestehender Plan geändert, speichert Mampfo den neuen Rhythmus für den nächsten passenden Startzeitpunkt des neuen Plans. Damit wird ein laufender Tagesrhythmus nicht mitten in einer Phase umgestellt.
 
-Fastenpläne werden als eigene Datensätze mit `activeFrom` gespeichert. Das bereitet zugleich die historische Zuordnung der Fastenphasen in v0.4.2 vor.
-
-### Vorbereitung auf v0.4.2
-
-Das Unterregister **Verlauf** ist bereits sichtbar, zeichnet in v0.4.1 aber noch keine tatsächlichen Fastenphasen auf. Mit v0.4.2 folgen manuelles Starten/Beenden, Zeitkorrekturen, Nachtragen und Verlauf.
+Fastenpläne werden als eigene Datensätze mit `activeFrom` gespeichert. v0.4.2 nutzt diese Historie nun zur Zuordnung tatsächlicher Fastenphasen.
 
 ### Daten und Update
 
@@ -151,7 +215,7 @@ weitergeführt. Bestehende Lebensmittel, Tagebucheinträge, Rezepte und Einstell
 
 Es gibt keinen Build-Prozess und keine externen Abhängigkeiten. Den Inhalt dieses Ordners direkt in das bestehende Repository kopieren und die vorhandenen Dateien ersetzen.
 
-Der Service Worker verwendet für v0.3.3 den Cache-Namen `mampfo-v0.3.3`. Falls ein Gerät zunächst noch die alte Version zeigt, die installierte PWA einmal vollständig schließen und erneut öffnen.
+Der Service Worker verwendet einen versionsbezogenen Cache-Namen. Falls ein Gerät zunächst noch die alte Version zeigt, die installierte PWA einmal vollständig schließen und erneut öffnen.
 
 ## Lokaler Test
 
@@ -163,7 +227,6 @@ Danach `http://localhost:8080` im Browser öffnen.
 
 ## Noch Platzhalter
 
-- Fasten
 - Auswertung
 - externe Lebensmitteldatenbank / Bundeslebensmittelschlüssel
 - Cloud-Synchronisation
@@ -174,7 +237,7 @@ Mampfo speichert die Daten weiterhin ausschließlich lokal im jeweiligen Browser
 
 ## Version
 
-0.3.3
+0.4.2
 
 
 ## Neu in v0.3.3.1

@@ -1,5 +1,28 @@
 # Changelog
 
+## v0.4.2 – Fastenverlauf und tatsächliche Fastenzeiten
+
+### Neu
+- tatsächliche Fasten-Sessions als lokales Datenmodell aktiviert
+- geplante Fastenphasen werden aus dem Fastenplan rekonstruiert und automatisch abgeschlossen
+- **Fasten jetzt beginnen** ergänzt
+- **Fasten jetzt beenden** ergänzt
+- Beginn und geplantes Ende einer laufenden Fastenphase können korrigiert werden
+- Unterregister **Verlauf** vollständig aktiviert
+- abgeschlossene Fastenphasen mit Beginn, Ende, Dauer und damaligem Ziel anzeigen
+- Fastenphasen nachträglich bearbeiten, löschen und ergänzen
+- Überschneidungsprüfung für Fastenzeiträume ergänzt
+- historische Fastenziele bleiben als Snapshot erhalten
+- Startseite zeigt am aktuellen Tag **Heute · Fasten** bzw. **Heute · Essensphase**
+- bei anderen Tagen erscheint **Zum heutigen Tag** als kompakter Rücksprung
+- ohne Fastenplan bleibt die Startseitenanzeige bei **Heute**
+- Service-Worker-Cache auf v0.4.2 aktualisiert
+
+### Bestehende Daten
+- Tagebuch, Lebensmittel, Rezepte und Fastenpläne aus v0.4.1 bleiben erhalten
+- Datenmodell bleibt Version 4
+
+
 ## v0.4.1 – Fastenplan und Timer
 
 ### Neu
