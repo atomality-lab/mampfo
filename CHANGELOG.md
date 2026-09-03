@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.4.2.2 – Zeitlogik und Zukunftsschutz
+
+### Korrigiert
+- abgeschlossene Fastenphasen mit Endzeit in der Zukunft werden nicht mehr akzeptiert
+- bereits gespeicherte ungültige Zukunfts-Sessions werden automatisch bereinigt und aus dem Plan neu rekonstruiert
+- Erkennung vorzeitig beendeter Fastenphasen auf das aktuell laufende geplante Fastenfenster begrenzt
+- alte/unpassende Sessions können die aktuelle Phase nicht mehr fälschlich auf Essensphase setzen
+- laufende Fastenphase wird im Verlauf nur bis zur aktuellen Uhrzeit dargestellt und mit **läuft** gekennzeichnet
+- zukünftige Minuten erscheinen nicht mehr als abgeschlossener Verlauf
+- Nachtragen/Bearbeiten abgeschlossener Sessions verhindert zukünftige Endzeiten
+- laufende Verlaufseinträge öffnen die Bearbeitung der aktiven Fastenphase
+- Service-Worker-Cache auf v0.4.2.2 aktualisiert
+
+### Bestehende Daten
+- korrekte bestehende Daten bleiben erhalten
+- nur logisch unmögliche abgeschlossene Zukunfts-Sessions werden entfernt
+- Datenmodell bleibt Version 4
+
+
 ## v0.4.2.1 – Fastenverlauf nach Kalendertagen
 
 ### Geändert

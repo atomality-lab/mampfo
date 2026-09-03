@@ -1,6 +1,39 @@
-# Mampfo v0.4.2.1
+# Mampfo v0.4.2.2
 
 Mampfo ist eine persönliche, lokal gespeicherte PWA zum Ernährungstracking.
+
+
+## Neu in v0.4.2.2 – Zeitlogik und Zukunftsschutz
+
+v0.4.2.2 korrigiert einen Fehler, durch den zukünftige oder unpassende Fasten-Sessions die aktuell angezeigte Phase überschreiben konnten.
+
+### Korrigiert
+
+- Abgeschlossene Fastenphasen dürfen nicht mehr in der Zukunft enden.
+- Bereits vorhandene ungültige Zukunfts-Sessions werden beim nächsten Abgleich automatisch entfernt und geplante Sessions anschließend aus dem gültigen Fastenplan neu aufgebaut.
+- Die Erkennung **„Fasten vorzeitig beendet“** berücksichtigt nur noch Sessions, die das aktuell laufende geplante Fastenfenster tatsächlich überlappen.
+- Ein alter Datensatz vom Vortag kann dadurch nicht mehr fälschlich eine Essensphase auslösen.
+- Der Fastenverlauf zeigt eine aktuell laufende Fastenphase nur bis **jetzt** und kennzeichnet sie mit **„läuft“**. Es werden keine zukünftigen Minuten als bereits gefastet dargestellt.
+- Beim Nachtragen oder Bearbeiten einer abgeschlossenen Fastenphase kann kein Endzeitpunkt in der Zukunft mehr gespeichert werden.
+- Ein laufender Zeitraum im Verlauf öffnet beim Antippen die Bearbeitung der laufenden Fastenphase.
+
+### Beispiel
+
+Bei einem Plan mit Essensbeginn um 09:00 zeigt Mampfo um 08:45 korrekt:
+
+- Startseite: **Heute · 🌙 Fasten**
+- Timer: Fasten seit dem tatsächlichen Beginn, Ende um **09:00**
+- Verlauf heute: z. B. **00:00–08:45 · 8 h 45 min Fasten · läuft**
+
+Erst nach 09:00 wird der Tagesabschnitt als abgeschlossen dargestellt.
+
+### Daten und Update
+
+- bestehende korrekte Fasten-Sessions bleiben erhalten
+- ungültige abgeschlossene Sessions mit Zukunftsende werden automatisch bereinigt
+- Fastenpläne, Tagebuch, Lebensmittel und Rezepte bleiben unverändert
+- Datenmodell bleibt Version 4
+- Service-Worker-Cache auf v0.4.2.2 aktualisiert
 
 
 ## Neu in v0.4.2.1 – Fastenverlauf nach Kalendertagen

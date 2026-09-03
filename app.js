@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const CFG = window.APP_CONFIG || { appName: 'Mampfo', version: '0.4.2.1' };
+  const CFG = window.APP_CONFIG || { appName: 'Mampfo', version: '0.4.2.2' };
   const STORAGE = {
     settings: 'mampfo.settings.v2',
     entries: 'mampfo.entries.v2',
@@ -2505,9 +2505,54 @@
     });
   }
 
+  function repairInvalidFastingSessions(now = new Date()) {
+    const nowMs = now.getTime();
+    let changed = false;
+    const valid = [];
+
+    state.fastingSessions.forEach(session => {
+      if (session.deleted) {
+        valid.push(session);
+        return;
+      }
+
+      const start = new Date(session.startAt);
+      if (Number.isNaN(start.getTime()) || start.getTime() > nowMs) {
+        changed = true;
+        return;
+      }
+
+      if (session.endAt) {
+        const end = new Date(session.endAt);
+        if (Number.isNaN(end.getTime()) || end.getTime() <= start.getTime() || end.getTime() > nowMs) {
+          // Eine abgeschlossene Session kann nicht in der Zukunft enden.
+          // Den fehlerhaften Datensatz entfernen wir vollständig; geplante Sessions
+          // werden direkt danach aus dem gültigen Fastenplan neu rekonstruiert.
+          changed = true;
+          return;
+        }
+      }
+
+      valid.push(session);
+    });
+
+    if (changed) state.fastingSessions = valid;
+    return changed;
+  }
+
+  function currentScheduledFastingWindow(plan, now = new Date()) {
+    if (!plan) return null;
+    const day = startOfLocalDay(now);
+    for (let offset = -1; offset <= 1; offset += 1) {
+      const raw = fastingWindowForDate(plan, addDateMinutes(day, offset * 1440));
+      if (raw && raw.start.getTime() <= now.getTime() && raw.end.getTime() > now.getTime()) return raw;
+    }
+    return null;
+  }
+
   function synchronizeFastingSessions(now = new Date()) {
     if (!state.fastPlans.length) return false;
-    let changed = false;
+    let changed = repairInvalidFastingSessions(now);
     const plans = [...state.fastPlans].sort((a, b) => new Date(a.activeFrom) - new Date(b.activeFrom));
     const horizon = addDateMinutes(now, 1440);
     plans.forEach((plan, index) => {
@@ -2636,15 +2681,21 @@
     const scheduled = phaseForPlan(plan, now);
     if (!scheduled) return null;
     if (scheduled.phase === 'fasting') {
-      const endedEarly = state.fastingSessions
+      const currentWindow = currentScheduledFastingWindow(plan, now);
+      const endedEarly = currentWindow ? state.fastingSessions
         .filter(session => !session.deleted && session.endAt && session.planId === plan.id)
         .filter(session => {
+          const start = new Date(session.startAt);
           const end = new Date(session.endAt);
           const planned = new Date(session.plannedEndAt || session.endAt);
-          return end.getTime() <= now.getTime() && planned.getTime() > now.getTime();
+          if ([start, end, planned].some(value => Number.isNaN(value.getTime()))) return false;
+          return end.getTime() <= now.getTime()
+            && planned.getTime() > now.getTime()
+            && start.getTime() < currentWindow.end.getTime()
+            && end.getTime() > currentWindow.start.getTime();
         })
         .sort((a, b) => new Date(a.endAt) - new Date(b.endAt))
-        .at(-1);
+        .at(-1) : null;
       if (endedEarly) {
         const start = new Date(endedEarly.endAt);
         const end = nextScheduledFastingStart(plan, now) || addDateMinutes(start, plan.eatingMinutes);
@@ -2699,12 +2750,18 @@
     return next;
   }
 
-  function fastingHistoryDays(sessions) {
+  function fastingHistoryDays(sessions, now = new Date()) {
     const days = new Map();
+    const nowMs = now.getTime();
     sessions.forEach(session => {
       const sessionStart = new Date(session.startAt);
-      const sessionEnd = new Date(session.endAt);
-      if (Number.isNaN(sessionStart.getTime()) || Number.isNaN(sessionEnd.getTime()) || sessionEnd <= sessionStart) return;
+      const storedEnd = session.endAt ? new Date(session.endAt) : null;
+      if (Number.isNaN(sessionStart.getTime()) || sessionStart.getTime() > nowMs) return;
+      if (storedEnd && Number.isNaN(storedEnd.getTime())) return;
+
+      const running = !storedEnd;
+      const sessionEnd = new Date(Math.min(storedEnd ? storedEnd.getTime() : nowMs, nowMs));
+      if (sessionEnd <= sessionStart) return;
 
       let cursor = new Date(sessionStart);
       let guard = 0;
@@ -2726,7 +2783,8 @@
           dayStart,
           dayEnd,
           minutes,
-          targetMinutes: Number(session.targetMinutes || 0)
+          targetMinutes: Number(session.targetMinutes || 0),
+          running: running && segmentEnd.getTime() === sessionEnd.getTime() && segmentEnd.getTime() === nowMs
         });
         day.totalMinutes += minutes;
         cursor = new Date(segmentEnd);
@@ -2753,11 +2811,13 @@
   }
 
   function fastingHistoryMarkup() {
-    synchronizeFastingSessions(new Date());
+    const now = new Date();
+    synchronizeFastingSessions(now);
     const sessions = state.fastingSessions
-      .filter(session => !session.deleted && session.endAt)
+      .filter(session => !session.deleted && new Date(session.startAt).getTime() <= now.getTime())
+      .filter(session => !session.endAt || new Date(session.endAt).getTime() <= now.getTime())
       .sort((a, b) => new Date(b.startAt) - new Date(a.startAt));
-    const days = fastingHistoryDays(sessions);
+    const days = fastingHistoryDays(sessions, now);
     return `<section class="fasting-history-head">
       <div><h2>Fastenverlauf</h2><p>Fastenzeit je Kalendertag. Tippe einen Zeitraum an, um die vollständige Fastenphase zu bearbeiten.</p></div>
       <button type="button" class="secondary-button compact-action" id="add-fasting-session">${icon('plus')} Nachtragen</button>
@@ -2776,7 +2836,7 @@
             <span class="fasting-history-moon">${icon('moon')}</span>
             <span class="fasting-day-segment-main">
               <strong>${fastingSegmentClock(segment, 'start')} – ${fastingSegmentClock(segment, 'end')}</strong>
-              <small>${durationText(segment.minutes)} Fasten</small>
+              <small>${durationText(segment.minutes)} Fasten${segment.running ? ' · läuft' : ''}</small>
             </span>
             <span class="chev">›</span>
           </button>`).join('')}
@@ -2797,7 +2857,7 @@
     modalRoot.innerHTML = `<div class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="fast-session-editor-title"><div class="modal">
       <h2 id="fast-session-editor-title">${session ? 'Fastenphase bearbeiten' : 'Fastenphase nachtragen'}</h2>
       <label class="modal-field"><span>Beginn</span><input id="fast-session-start" type="datetime-local" value="${esc(startValue)}"></label>
-      <label class="modal-field"><span>Ende</span><input id="fast-session-end" type="datetime-local" value="${esc(endValue)}"></label>
+      <label class="modal-field"><span>Ende</span><input id="fast-session-end" type="datetime-local" max="${esc(localDateTimeInputValue(now))}" value="${esc(endValue)}"></label>
       <div class="fasting-session-preview" id="fast-session-preview"></div>
       <div class="modal-actions">
         <button class="primary-button" id="save-fast-session">${session ? 'Änderungen speichern' : 'Fastenphase speichern'}</button>
@@ -2814,6 +2874,10 @@
         box.innerHTML = '<small>Bitte Beginn und Ende prüfen.</small>';
         return;
       }
+      if (end.getTime() > Date.now()) {
+        box.innerHTML = '<small>Das Ende einer abgeschlossenen Fastenphase darf nicht in der Zukunft liegen.</small>';
+        return;
+      }
       box.innerHTML = `<small>Dauer</small><strong>${durationText((end - start) / 60000)}</strong>`;
     };
     document.getElementById('fast-session-start').addEventListener('input', update);
@@ -2823,6 +2887,7 @@
       const start = parseLocalDateTimeInput(document.getElementById('fast-session-start').value);
       const end = parseLocalDateTimeInput(document.getElementById('fast-session-end').value);
       if (!start || !end || end <= start) return showToast('Bitte Beginn und Ende prüfen.');
+      if (end.getTime() > Date.now()) return showToast('Das Ende einer abgeschlossenen Fastenphase darf nicht in der Zukunft liegen.');
       if (sessionsOverlap(start, end, session?.id || null)) return showToast('Diese Fastenphase überschneidet sich mit einer vorhandenen Fastenphase.');
       const plan = planEffectiveAt(start) || activeFastPlan(new Date());
       const stamp = new Date().toISOString();
@@ -3011,7 +3076,11 @@
     if (tab === 'history') {
       document.getElementById('add-fasting-session')?.addEventListener('click', () => openFastingSessionEditor());
       document.querySelectorAll('[data-fasting-session]').forEach(button => {
-        button.onclick = () => openFastingSessionEditor(button.dataset.fastingSession);
+        button.onclick = () => {
+          const session = state.fastingSessions.find(item => item.id === button.dataset.fastingSession && !item.deleted);
+          if (session && !session.endAt) editActiveFastingSession();
+          else openFastingSessionEditor(button.dataset.fastingSession);
+        };
       });
     }
     if (tab === 'timer') {
@@ -3226,7 +3295,7 @@
 
   window.setInterval(() => {
     if (!state.onboarded) return;
-    if (state.view === 'fasting' && state.fastingTab === 'timer') {
+    if (state.view === 'fasting' && (state.fastingTab === 'timer' || state.fastingTab === 'history')) {
       renderFasting();
       bindCommon();
     } else if (state.view === 'today' && state.selectedDate === todayISO()) {
@@ -3235,7 +3304,7 @@
   }, 30000);
   document.addEventListener('visibilitychange', () => {
     if (document.hidden || !state.onboarded) return;
-    if (state.view === 'fasting' && state.fastingTab === 'timer') {
+    if (state.view === 'fasting' && (state.fastingTab === 'timer' || state.fastingTab === 'history')) {
       renderFasting();
       bindCommon();
     } else if (state.view === 'today' && state.selectedDate === todayISO()) {
