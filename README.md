@@ -1,7 +1,47 @@
-# Mampfo v0.4.2.2
+# Mampfo v0.4.3
 
 Mampfo ist eine persönliche, lokal gespeicherte PWA zum Ernährungstracking.
 
+
+## Neu in v0.4.3 – Ernährung ↔ Fasten
+
+v0.4.3 verbindet den Essenszeitpunkt mit dem Fastenverlauf. Entscheidend ist nicht, wann ein Eintrag in Mampfo erfasst wird, sondern **wann tatsächlich gegessen wurde**.
+
+### Verhalten
+
+Liegt der Zeitpunkt eines neuen Ernährungseintrags innerhalb einer gespeicherten Fastenphase, fragt Mampfo:
+
+- **Fasten um HH:MM beenden** – die betroffene Fastenphase endet zum Essenszeitpunkt.
+- **Nur Essen speichern** – der Tagebucheintrag wird gespeichert, die Fastenphase bleibt unverändert.
+- **Abbrechen** – es wird noch nichts gespeichert oder verändert.
+
+Die Prüfung gilt für:
+
+- normale manuelle Ernährungseinträge
+- gespeicherte Lebensmittel
+- Rezept-Einträge
+- rückwirkend erfasste Mahlzeiten
+- Tagebucheinträge, deren Datum oder Uhrzeit nachträglich verändert wird
+
+### Rückwirkendes Beispiel
+
+Fasten laut Verlauf:
+
+**02.09. 19:30 → 03.09. 09:30**
+
+Am 03.09. um 12:00 wird nachträglich ein Essen für **08:30** erfasst. Mampfo erkennt, dass 08:30 innerhalb der historischen Fastenphase liegt. Bei **Fasten um 08:30 beenden** wird daraus:
+
+**02.09. 19:30 → 03.09. 08:30**
+
+Der Tagesverlauf wird anschließend entsprechend neu berechnet.
+
+### Schutzregeln
+
+- Die Fastenzeit wird niemals stillschweigend verändert.
+- Zukunftseinträge verändern keine Fastenphase.
+- Einträge exakt an einer Phasengrenze lösen keine Abfrage aus.
+- Beim Bearbeiten wird nur dann erneut geprüft, wenn Datum oder Uhrzeit geändert wurden.
+- Datenmodell und vorhandene Speicherbereiche bleiben unverändert.
 
 ## Neu in v0.4.2.2 – Zeitlogik und Zukunftsschutz
 

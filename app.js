@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const CFG = window.APP_CONFIG || { appName: 'Mampfo', version: '0.4.2.2' };
+  const CFG = window.APP_CONFIG || { appName: 'Mampfo', version: '0.4.3' };
   const STORAGE = {
     settings: 'mampfo.settings.v2',
     entries: 'mampfo.entries.v2',
@@ -1034,6 +1034,76 @@
     return null;
   }
 
+  function foodEntryMoment(values) {
+    if (!values?.date || !values?.time) return null;
+    const moment = new Date(localDateTimeISO(values.date, values.time));
+    return Number.isNaN(moment.getTime()) ? null : moment;
+  }
+
+  function fastingSessionContainingMoment(moment, now = new Date()) {
+    if (!(moment instanceof Date) || Number.isNaN(moment.getTime())) return null;
+    // Zukunftseinträge sind Planung, keine bereits erfolgte Nahrungsaufnahme.
+    if (moment.getTime() > now.getTime()) return null;
+    if (!state.fastPlans.length) return null;
+
+    synchronizeFastingSessions(now);
+    return state.fastingSessions
+      .filter(session => !session.deleted)
+      .filter(session => {
+        const start = new Date(session.startAt);
+        const end = new Date(session.endAt || session.plannedEndAt || session.startAt);
+        if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return false;
+        // Exakt am Beginn oder Ende liegt der Eintrag nicht "innerhalb" der Fastenphase.
+        return moment.getTime() > start.getTime() && moment.getTime() < end.getTime();
+      })
+      .sort((a, b) => new Date(b.startAt) - new Date(a.startAt))[0] || null;
+  }
+
+  function fastingConflictDateTime(value) {
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    return new Intl.DateTimeFormat('de-DE', {
+      day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
+    }).format(date);
+  }
+
+  function resolveFastingConflictBeforeFoodSave(values, continueSave) {
+    const moment = foodEntryMoment(values);
+    const session = fastingSessionContainingMoment(moment, new Date());
+    if (!session) return continueSave();
+
+    const sessionStart = new Date(session.startAt);
+    const sessionEnd = new Date(session.endAt || session.plannedEndAt);
+    const mealTime = clockText(moment);
+
+    modalRoot.innerHTML = `<div class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="food-fasting-conflict-title"><div class="modal">
+      <div class="modal-icon lavender">${icon('moon')}</div>
+      <h2 id="food-fasting-conflict-title">Fastenphase anpassen?</h2>
+      <p>Der Essenseintrag um <strong>${esc(mealTime)} Uhr</strong> liegt innerhalb einer aufgezeichneten Fastenphase.</p>
+      <div class="compare-box single"><div><small>Fastenphase</small><strong>${esc(fastingConflictDateTime(sessionStart))}</strong><span>bis ${esc(fastingConflictDateTime(sessionEnd))}</span></div></div>
+      <p class="modal-note">Mampfo ändert die Fastenzeit nicht automatisch. Du entscheidest, ob dieses Essen die Fastenphase beendet.</p>
+      <div class="modal-actions">
+        <button class="primary-button" id="food-end-fast">Fasten um ${esc(mealTime)} beenden</button>
+        <button class="secondary-button" id="food-keep-fast">Nur Essen speichern</button>
+        <button class="secondary-button" id="food-fast-cancel">Abbrechen</button>
+      </div>
+    </div></div>`;
+
+    document.getElementById('food-fast-cancel').onclick = () => { modalRoot.innerHTML = ''; };
+    document.getElementById('food-keep-fast').onclick = () => {
+      modalRoot.innerHTML = '';
+      continueSave();
+    };
+    document.getElementById('food-end-fast').onclick = () => {
+      session.endAt = moment.toISOString();
+      session.endSource = 'foodEntry';
+      session.updatedAt = new Date().toISOString();
+      persist();
+      modalRoot.innerHTML = '';
+      continueSave();
+    };
+  }
+
   function handleFoodSubmit(event) {
     event.preventDefault();
     const values = formValues();
@@ -1041,6 +1111,16 @@
     if (error) return showToast(error);
 
     const editing = state.editingId ? state.entries.find(e => e.id === state.editingId) : null;
+    const timestampChanged = editing && (editing.date !== values.date || editing.time !== values.time);
+    const continueSave = () => continueFoodSubmit(values, editing);
+
+    // Neue Einträge werden immer gegen den Fastenverlauf geprüft. Beim Bearbeiten
+    // ist die Prüfung nur nötig, wenn Datum oder Uhrzeit verändert wurden.
+    if (!editing || timestampChanged) return resolveFastingConflictBeforeFoodSave(values, continueSave);
+    return continueSave();
+  }
+
+  function continueFoodSubmit(values, editing) {
     const now = new Date().toISOString();
 
     if (editing) {
@@ -1049,12 +1129,7 @@
         return promptLinkedEntryEdit(editing, linkedFood, values, now);
       }
       Object.assign(editing, values, { updatedAt: now });
-      state.selectedDate = values.date;
-      state.editingId = null;
-      persist();
-      showToast('Änderungen gespeichert.');
-      state.view = 'today';
-      return window.setTimeout(render, 50);
+      return finishEditedEntry(editing, 'Änderungen gespeichert.');
     }
 
     const selected = getSelectedFood();
@@ -2332,19 +2407,24 @@
     const time = document.getElementById('recipe-log-time').value;
     if (portions == null || portions <= 0) return showToast('Bitte eine gültige Portionsmenge eingeben.');
     if (!date || !time) return showToast('Bitte Datum und Uhrzeit angeben.');
-    const values = scaledRecipeValues(recipe, portions);
-    const now = new Date().toISOString();
-    state.entries.push({
-      id: uuid(), name: recipe.name, amount: cleanNumber(portions, 3), unit: 'portion',
-      calories: cleanNumber(values.calories), protein: cleanNumber(values.protein), fiber: cleanNumber(values.fiber), fat: cleanNumber(values.fat), carbohydrates: cleanNumber(values.carbohydrates),
-      date, time, source: 'recipe', foodId: null, recipeId: recipe.id, createdAt: now, updatedAt: now
-    });
-    state.selectedDate = date;
-    state.selectedRecipeId = null;
-    state.recipeLogOrigin = 'recipes';
-    persist();
-    showToast('Rezept ins Tagebuch eingetragen.');
-    setView('today');
+
+    const commit = () => {
+      const values = scaledRecipeValues(recipe, portions);
+      const now = new Date().toISOString();
+      state.entries.push({
+        id: uuid(), name: recipe.name, amount: cleanNumber(portions, 3), unit: 'portion',
+        calories: cleanNumber(values.calories), protein: cleanNumber(values.protein), fiber: cleanNumber(values.fiber), fat: cleanNumber(values.fat), carbohydrates: cleanNumber(values.carbohydrates),
+        date, time, source: 'recipe', foodId: null, recipeId: recipe.id, createdAt: now, updatedAt: now
+      });
+      state.selectedDate = date;
+      state.selectedRecipeId = null;
+      state.recipeLogOrigin = 'recipes';
+      persist();
+      showToast('Rezept ins Tagebuch eingetragen.');
+      setView('today');
+    };
+
+    resolveFastingConflictBeforeFoodSave({ date, time }, commit);
   }
 
 

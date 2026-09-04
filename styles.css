@@ -449,6 +449,7 @@ button { cursor: pointer; }
 }
 .modal-icon.sage { background: var(--sage-pale); color: var(--sage-dark); }
 .modal-icon.apricot { background: var(--apricot-pale); color: #9a653d; }
+.modal-icon.lavender { background: var(--lavender-pale); color: var(--lavender-strong); }
 .compare-box {
   display: grid;
   grid-template-columns: 1fr 1fr;

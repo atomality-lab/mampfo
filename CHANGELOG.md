@@ -1,5 +1,31 @@
 # Changelog
 
+## v0.4.3 – Ernährung und Fasten verknüpfen
+
+### Neu
+- Beim Speichern eines neuen Ernährungseintrags prüft Mampfo dessen **tatsächlichen Essenszeitpunkt** gegen den Fastenverlauf.
+- Die Prüfung funktioniert auch für **rückwirkend erfasste Einträge**, deren Fastenphase bereits beendet ist.
+- Liegt die Essenszeit innerhalb einer gespeicherten Fastenphase, erscheint die Auswahl:
+  - **Fasten um HH:MM beenden**
+  - **Nur Essen speichern**
+  - **Abbrechen**
+- Bei **Fasten beenden** wird genau die betroffene Fasten-Session am Zeitpunkt des Essens verkürzt; der geplante Endzeitpunkt bleibt als Planinformation erhalten.
+- Die Fastenphase erhält `endSource = foodEntry`, sodass die Herkunft der Änderung nachvollziehbar bleibt.
+- Auch **Rezept-Einträge** verwenden dieselbe Fastenprüfung.
+- Beim Bearbeiten eines Tagebucheintrags wird erneut geprüft, wenn **Datum oder Uhrzeit** verändert wurden.
+- Reine Änderungen an Name, Menge oder Nährwerten lösen keine erneute Fastenabfrage aus.
+- Einträge in der Zukunft verändern den Fastenverlauf nicht.
+- Ein Eintrag exakt am Beginn oder Ende einer Fastenphase gilt nicht als innerhalb dieser Phase.
+
+### Beispiel
+Eine gespeicherte Fastenphase läuft von **02.09. 19:30 bis 03.09. 09:30**. Wird am 03.09. mittags ein Essen rückwirkend für **08:30** eingetragen, erkennt Mampfo die historische Fastenphase und kann sie auf **19:30 bis 08:30** verkürzen.
+
+### Bestehende Daten
+- Fastenpläne und bestehende Sessions bleiben erhalten.
+- Tagebuch, Lebensmittel und Rezepte bleiben unverändert.
+- Datenmodell bleibt Version 4.
+- Service-Worker-Cache auf v0.4.3 aktualisiert.
+
 ## v0.4.2.2 – Zeitlogik und Zukunftsschutz
 
 ### Korrigiert
