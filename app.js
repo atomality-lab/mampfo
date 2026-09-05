@@ -3445,7 +3445,7 @@
     const totalTracked = days.filter(day => day.hasData).length;
     const value = avg.value == null ? '–' : fmt(avg.value, cfg.digits);
     return `<article class="stats-kpi-card ${cfg.cls}">
-      <span class="stats-kpi-icon">${icon(cfg.icon)}</span>
+      <span class="stats-kpi-icon-wrap"><span class="stats-kpi-icon">${icon(cfg.icon)}</span></span>
       <div><small>Ø ${cfg.label}</small><strong>${value}${avg.value == null ? '' : ` ${cfg.unit}`}</strong><span>${avg.count} ${avg.count === 1 ? 'geeigneter Tag' : 'geeignete Tage'} · ${totalTracked} Ernährungstage</span></div>
     </article>`;
   }
@@ -3625,7 +3625,7 @@
   function statsFastingAverageCard(data) {
     const avg = statsAverageFastingDay(data.days);
     const tracked = data.days.filter(day => day.hasData).length;
-    return `<article class="stats-kpi-card fasting"><span class="stats-kpi-icon">${icon('moon')}</span><div><small>Ø Fastenzeit pro Tag</small><strong>${avg.value == null ? '–' : durationText(Math.round(avg.value))}</strong><span>${avg.count} ${avg.count === 1 ? 'geeigneter Tag' : 'geeignete Tage'} · ${tracked} Fastentage</span></div></article>`;
+    return `<article class="stats-kpi-card fasting"><span class="stats-kpi-icon-wrap"><span class="stats-kpi-icon">${icon('moon')}</span></span><div><small>Ø Fastenzeit pro Tag</small><strong>${avg.value == null ? '–' : durationText(Math.round(avg.value))}</strong><span>${avg.count} ${avg.count === 1 ? 'geeigneter Tag' : 'geeignete Tage'} · ${tracked} Fastentage</span></div></article>`;
   }
 
   function statsOverview(days, fastingData) {
@@ -3725,10 +3725,10 @@
     const sessionList = [...data.runningSessions, ...data.completedSessions].sort((a, b) => new Date(b.startAt) - new Date(a.startAt));
     return `<section class="stats-fasting-view">
       <div class="stats-kpi-grid stats-fast-kpi-grid">
-        <article class="stats-kpi-card fasting"><span class="stats-kpi-icon">${icon('moon')}</span><div><small>Ø Fastenzeit pro Tag</small><strong>${daily.value == null ? '–' : durationText(Math.round(daily.value))}</strong><span>${daily.count} ${daily.count === 1 ? 'Kalendertag' : 'Kalendertage'}</span></div></article>
-        <article class="stats-kpi-card fasting-phase"><span class="stats-kpi-icon">${icon('clock')}</span><div><small>Ø Fastenphase</small><strong>${phases.average == null ? '–' : durationText(Math.round(phases.average))}</strong><span>${phases.count} abgeschlossene ${phases.count === 1 ? 'Phase' : 'Phasen'}</span></div></article>
-        <article class="stats-kpi-card fasting-long"><span class="stats-kpi-icon">↗</span><div><small>Längste Phase</small><strong>${phases.longest == null ? '–' : durationText(Math.round(phases.longest))}</strong><span>zusammenhängend</span></div></article>
-        <article class="stats-kpi-card fasting-short"><span class="stats-kpi-icon">↘</span><div><small>Kürzeste Phase</small><strong>${phases.shortest == null ? '–' : durationText(Math.round(phases.shortest))}</strong><span>zusammenhängend</span></div></article>
+        <article class="stats-kpi-card fasting"><span class="stats-kpi-icon-wrap"><span class="stats-kpi-icon">${icon('moon')}</span></span><div><small>Ø Fastenzeit pro Tag</small><strong>${daily.value == null ? '–' : durationText(Math.round(daily.value))}</strong><span>${daily.count} ${daily.count === 1 ? 'Kalendertag' : 'Kalendertage'}</span></div></article>
+        <article class="stats-kpi-card fasting-phase"><span class="stats-kpi-icon-wrap"><span class="stats-kpi-icon">${icon('clock')}</span></span><div><small>Ø Fastenphase</small><strong>${phases.average == null ? '–' : durationText(Math.round(phases.average))}</strong><span>${phases.count} abgeschlossene ${phases.count === 1 ? 'Phase' : 'Phasen'}</span></div></article>
+        <article class="stats-kpi-card fasting-long"><span class="stats-kpi-icon-wrap"><span class="stats-kpi-icon">↗</span></span><div><small>Längste Phase</small><strong>${phases.longest == null ? '–' : durationText(Math.round(phases.longest))}</strong><span>zusammenhängend</span></div></article>
+        <article class="stats-kpi-card fasting-short"><span class="stats-kpi-icon-wrap"><span class="stats-kpi-icon">↘</span></span><div><small>Kürzeste Phase</small><strong>${phases.shortest == null ? '–' : durationText(Math.round(phases.shortest))}</strong><span>zusammenhängend</span></div></article>
       </div>
       ${statsFastingChart(data)}
       <section class="stats-fast-sessions-card">

@@ -1293,20 +1293,53 @@ button { cursor: pointer; }
 .stats-content { display: grid; gap: 13px; }
 .stats-kpi-grid { display: grid; gap: 9px; }
 .stats-kpi-card {
-  display: grid; grid-template-columns: 58px 1fr; gap: 12px; align-items: center; border: 1px solid var(--line); border-radius: 17px; padding: 13px 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 17px;
+  padding: 13px 14px;
   background: var(--surface);
+  min-height: 86px;
 }
 .stats-kpi-card.calories { background: var(--apricot-pale); border-color: #f0ddca; }
 .stats-kpi-card.protein { background: var(--lavender-pale); border-color: #e2daed; }
 .stats-kpi-card.fiber { background: var(--sage-pale); border-color: #dce8d7; }
 .stats-kpi-card.fat { background: var(--bluegray-pale); border-color: #d8e5ea; }
 .stats-kpi-card.carbs { background: #f6f0e5; border-color: #e8dece; }
+.stats-kpi-card.fasting { background: var(--bluegray-pale); border-color: #d5e1e7; }
+.stats-kpi-card.fasting-phase { background: var(--lavender-pale); border-color: #e1daeb; }
+.stats-kpi-card.fasting-long { background: var(--sage-pale); border-color: #dbe7d7; }
+.stats-kpi-card.fasting-short { background: #f7efe5; border-color: #eadfce; }
+.stats-kpi-card > div { flex: 1 1 auto; min-width: 0; }
+.stats-kpi-icon-wrap {
+  flex: 0 0 54px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+}
+.stats-kpi-icon {
+  width: 54px;
+  height: 54px;
+  border-radius: 16px;
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255,255,255,.86);
+  font-size: 1.65rem;
+  line-height: 1;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.35);
+}
 .stats-kpi-card.calories .stats-kpi-icon { color: var(--apricot-strong); }
 .stats-kpi-card.protein .stats-kpi-icon { color: var(--lavender-strong); }
 .stats-kpi-card.fiber .stats-kpi-icon { color: var(--sage-dark); }
 .stats-kpi-card.fat .stats-kpi-icon { color: #6f8896; }
 .stats-kpi-card.carbs .stats-kpi-icon { color: #907c56; }
-.stats-kpi-icon { width: 56px; height: 56px; border-radius: 18px; display: grid; place-items: center; justify-self: center; align-self: center; background: rgba(255,255,255,.86); font-size: 1.55rem; line-height: 1; box-shadow: inset 0 0 0 1px rgba(255,255,255,.35); }
+.stats-kpi-card.fasting .stats-kpi-icon { color: #6a8090; }
+.stats-kpi-card.fasting-phase .stats-kpi-icon { color: #75698b; }
+.stats-kpi-card.fasting-long .stats-kpi-icon { color: var(--sage-dark); }
+.stats-kpi-card.fasting-short .stats-kpi-icon { color: #8c7656; }
 .stats-kpi-card small, .stats-kpi-card strong, .stats-kpi-card span { display: block; }
 .stats-kpi-card small { color: var(--text-2); font-size: .69rem; font-weight: 760; }
 .stats-kpi-card strong { margin: 2px 0; font-size: 1.2rem; }
@@ -1365,7 +1398,6 @@ button { cursor: pointer; }
 
 @media (min-width: 680px) {
   .stats-kpi-grid { grid-template-columns: repeat(3, 1fr); }
-  .stats-kpi-card { grid-template-columns: 62px 1fr; }
   .stats-kpi-grid-five { grid-template-columns: repeat(3, 1fr); }
   .stats-kpi-grid-five .stats-kpi-card:nth-child(4), .stats-kpi-grid-five .stats-kpi-card:nth-child(5) { grid-column: span 1; }
   .stats-next-grid { grid-template-columns: 1fr 1fr; }
@@ -1386,10 +1418,10 @@ button { cursor: pointer; }
 .stats-kpi-card.fasting-long .stats-kpi-icon { color: var(--sage-dark); }
 .stats-kpi-card.fasting-short .stats-kpi-icon { color: #8c7656; }
 .stats-fast-summary-inline {
-  display: grid; grid-template-columns: 56px 1fr; gap: 12px; align-items: center; padding: 13px 14px;
+  display: flex; align-items: center; gap: 12px; padding: 13px 14px;
   border: 1px solid #d8e4e8; border-radius: 17px; background: rgba(232,241,245,.72);
 }
-.stats-fast-summary-inline > span { width: 56px; height: 56px; border-radius: 18px; display: grid; place-items: center; justify-self: center; background: rgba(255,255,255,.92); color: #677c8b; font-size: 1.55rem; line-height: 1; box-shadow: inset 0 0 0 1px rgba(255,255,255,.4); }
+.stats-fast-summary-inline > span { width: 48px; height: 48px; border-radius: 16px; display: flex !important; align-items: center; justify-content: center; flex: 0 0 48px; background: rgba(255,255,255,.92); color: #677c8b; font-size: 1.6rem; line-height: 1; box-shadow: inset 0 0 0 1px rgba(255,255,255,.4); }
 .stats-fast-summary-inline strong, .stats-fast-summary-inline small { display: block; }
 .stats-fast-summary-inline strong { font-size: .82rem; }
 .stats-fast-summary-inline small { margin-top: 3px; color: var(--text-3); font-size: .68rem; line-height: 1.4; }
