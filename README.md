@@ -1,7 +1,20 @@
-# Mampfo v0.5.2
+# Mampfo v0.5.2.1
 
 Mampfo ist eine persönliche, lokal gespeicherte PWA zum Ernährungstracking.
 
+
+## Neu in v0.5.2.1 – UI-Feinschliff Auswertung
+
+Dieser Patch überarbeitet die Statistik-Kacheln optisch, ohne die Berechnungslogik der Fasten- oder Ernährungsauswertung zu verändern.
+
+### Verbessert
+
+- größere und besser lesbare Symbole in den KPI-Karten
+- Symbole sitzen jetzt mittig in einer klaren Icon-Fläche
+- bessere Abstände in den Auswertungs-Kästchen
+- dezente farbliche Akzente für Ernährungs- und Fasten-Symbole
+- dieselbe Logik und dieselben Daten wie in v0.5.2
+- Service-Worker-Cache: `mampfo-v0.5.2.1`
 
 ## Neu in v0.5.2 – Fastenauswertung
 

@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.5.2.1 – UI-Feinschliff Auswertung
+
+### Verbessert
+- Symbole in den Auswertungs-Kacheln deutlich vergrößert
+- Icon-Flächen in KPI-Karten und Fasten-Zusammenfassungen zentriert und ruhiger ausgerichtet
+- Abstände innerhalb der Statistik-Karten optimiert, damit Icons nicht mehr oben links „kleben"
+- farbliche Icon-Akzente für Ernährung und Fasten ergänzt
+- Service-Worker-Cache auf v0.5.2.1 aktualisiert
+
 ## v0.5.2 – Fastenauswertung
 
 ### Neu
