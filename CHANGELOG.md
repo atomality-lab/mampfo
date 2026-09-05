@@ -1,5 +1,27 @@
 # Changelog
 
+## v0.6.2 – Bidirektionaler Geräteabgleich
+
+### Neu
+- vollständiger manueller und automatischer Geräteabgleich über Supabase
+- neue Datensätze verschiedener Geräte werden automatisch zusammengeführt
+- Drei-Wege-Vergleich über einen lokalen Sync-Baseline-Stand
+- Konflikterkennung, wenn derselbe Datensatz lokal und in der Cloud unterschiedlich geändert wurde
+- Konfliktauflösung: **Dieses Gerät verwenden** oder **Cloud-Version verwenden**
+- Synchronisation von Ernährung, Lebensmitteln, Rezepten, Fastenplänen, Fasten-Sessions und Tageszielen
+- Löschungen werden über Cloud-Tombstones (`deleted_at`) zwischen Geräten übertragen
+- Fasten-Tombstones bleiben lokal erhalten, damit geplante Sessions nicht erneut rekonstruiert werden
+- identische geplante Fasten-Sessions mit gleicher `cycleKey` werden beim ersten Merge dedupliziert
+- automatischer Sync nach gespeicherten Änderungen, beim App-Start, bei Rückkehr und nach Wiederherstellung der Internetverbindung
+- manueller Button **Jetzt synchronisieren** mit Status und Konfliktanzeige
+- automatischer Pull pausiert während offener Bearbeitungen und Dialoge
+
+### Kompatibilität
+- vorhandenes Supabase-Schema aus v0.6.1 kann weiterverwendet werden; keine Migration erforderlich
+- vorhandene LocalStorage-Daten und Datenmodell Version 4 bleiben erhalten
+- `supabase-config.js` mit persönlichen Project-Daten beim Update beibehalten
+- Service-Worker-Cache auf v0.6.2 aktualisiert
+
 ## v0.6.1 – Supabase-Grundgerüst und kontrollierter Erst-Upload
 
 ### Neu

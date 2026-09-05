@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const CFG = window.APP_CONFIG || { appName: 'Mampfo', version: '0.6.1' };
+  const CFG = window.APP_CONFIG || { appName: 'Mampfo', version: '0.6.2' };
   const STORAGE = {
     settings: 'mampfo.settings.v2',
     entries: 'mampfo.entries.v2',
@@ -249,7 +249,9 @@
 
   document.title = `${CFG.appName} · v${CFG.version}`;
 
-  function persist() {
+  let cloudApplyInProgress = false;
+
+  function persist(options = {}) {
     localStorage.setItem(STORAGE.settings, JSON.stringify(state.settings));
     localStorage.setItem(STORAGE.entries, JSON.stringify(state.entries));
     localStorage.setItem(STORAGE.foods, JSON.stringify(state.savedFoods));
@@ -258,7 +260,49 @@
     localStorage.setItem(STORAGE.fastingSessions, JSON.stringify(state.fastingSessions));
     localStorage.setItem(STORAGE.onboarded, state.onboarded ? 'yes' : 'no');
     localStorage.setItem(STORAGE.dataVersion, '4');
+    if (!options.skipCloud && !cloudApplyInProgress) window.MampfoCloud?.scheduleSync?.(CFG.version, { reason: 'local-change' });
   }
+
+  function cloudSnapshotFromState() {
+    return {
+      settings: JSON.parse(JSON.stringify(state.settings || {})),
+      entries: JSON.parse(JSON.stringify(state.entries || [])),
+      foods: JSON.parse(JSON.stringify(state.savedFoods || [])),
+      recipes: JSON.parse(JSON.stringify(state.recipes || [])),
+      fastPlans: JSON.parse(JSON.stringify(state.fastPlans || [])),
+      fastingSessions: JSON.parse(JSON.stringify(state.fastingSessions || [])),
+      onboarded: Boolean(state.onboarded),
+      dataVersion: 4
+    };
+  }
+
+  function applyCloudSnapshot(snapshot) {
+    if (!snapshot) return;
+    cloudApplyInProgress = true;
+    try {
+      state.settings = { ...(snapshot.settings || {}) };
+      state.entries = Array.isArray(snapshot.entries) ? snapshot.entries : [];
+      state.savedFoods = Array.isArray(snapshot.foods) ? snapshot.foods : [];
+      state.recipes = Array.isArray(snapshot.recipes) ? snapshot.recipes : [];
+      state.fastPlans = Array.isArray(snapshot.fastPlans) ? snapshot.fastPlans : [];
+      state.fastingSessions = Array.isArray(snapshot.fastingSessions) ? snapshot.fastingSessions : [];
+      state.onboarded = Boolean(snapshot.onboarded);
+      persist({ skipCloud: true });
+    } finally {
+      cloudApplyInProgress = false;
+    }
+    render();
+  }
+
+  window.MampfoDataBridge = {
+    snapshot: cloudSnapshotFromState,
+    apply: applyCloudSnapshot,
+    canAutoSync: () => {
+      if (modalRoot?.children?.length) return false;
+      if (state.editingId || state.editingFoodId || state.editingRecipeId || state.fastingPlanEditing) return false;
+      return !['add', 'foodEdit', 'recipeEdit', 'recipeLog', 'settings'].includes(state.view);
+    }
+  };
 
   function todayISO() {
     const d = new Date();
@@ -455,6 +499,7 @@
     if ('selectedSavedFoodId' in opts) state.selectedSavedFoodId = opts.selectedSavedFoodId;
     window.scrollTo({ top: 0, behavior: 'instant' });
     render();
+    window.MampfoCloud?.scheduleSync?.(CFG.version, { delay: 700, reason: 'navigation' });
   }
 
   function bottomNav(active) {
@@ -1517,11 +1562,14 @@
           <label><span>Passwort</span><input id="cloud-password" type="password" autocomplete="current-password" minlength="6" required placeholder="mindestens 6 Zeichen"></label>
           <div class="cloud-actions"><button type="submit" class="primary-button">Anmelden</button><button type="button" class="secondary-button" id="cloud-signup">Konto erstellen</button></div>
         </form>
-        <p class="cloud-footnote">Deine bestehenden Mampfo-Daten bleiben weiterhin lokal gespeichert. Die Cloud wird erst nach einer zusätzlichen Bestätigung befüllt.</p>
+        <p class="cloud-footnote">Mampfo bleibt lokal nutzbar. Nach der Anmeldung gleicht v0.6.2 deine Geräte über die persönliche Supabase-Cloud ab.</p>
       </section>`;
     }
 
     const local = cloud.localCounts();
+    const conflictCount = cloud.conflicts()?.length || 0;
+    const last = cloud.syncStatus();
+    const lastText = last?.lastSyncAt ? `Zuletzt synchronisiert: ${formatCloudSyncTime(last.lastSyncAt)}` : 'Noch kein vollständiger Geräteabgleich';
     return `<section class="cloud-card">
       <div class="cloud-card-head"><span class="cloud-icon connected">☁</span><div><strong>Mampfo Cloud</strong><small>Angemeldet als ${esc(user.email || 'Mampfo-Konto')}</small></div></div>
       <div class="cloud-status-line"><span class="cloud-status-dot"></span><span id="cloud-status-text">Cloud-Status wird geprüft …</span></div>
@@ -1533,12 +1581,15 @@
         <div><span>Fastenphasen</span><strong>${local.fastingSessions}</strong></div>
       </div>
       <div id="cloud-remote-summary" class="cloud-remote-summary"><span>Cloud</span><strong>Prüfung läuft …</strong></div>
+      <div class="cloud-last-sync" id="cloud-last-sync">${esc(lastText)}</div>
       <div class="cloud-actions stacked">
-        <button type="button" class="secondary-button" id="cloud-check">↻ Cloud prüfen</button>
-        <button type="button" class="primary-button" id="cloud-initialize" disabled>Lokale Daten in Cloud übernehmen</button>
+        <button type="button" class="primary-button" id="cloud-sync" disabled>↻ Jetzt synchronisieren</button>
+        <button type="button" class="secondary-button cloud-conflict-button ${conflictCount ? '' : 'hidden'}" id="cloud-conflicts">Konflikte lösen · <span id="cloud-conflict-count">${conflictCount}</span></button>
+        <button type="button" class="secondary-button" id="cloud-check">Cloud-Status prüfen</button>
+        <button type="button" class="secondary-button" id="cloud-initialize" disabled>Lokale Daten erstmals in Cloud übernehmen</button>
         <button type="button" class="cloud-logout" id="cloud-logout">Abmelden</button>
       </div>
-      <p class="cloud-footnote">v0.6.1 lädt nur in eine <strong>leere</strong> persönliche Cloud hoch. Bereits vorhandene Cloud-Daten werden nicht überschrieben oder zusammengeführt.</p>
+      <p class="cloud-footnote">v0.6.2 synchronisiert automatisch nach lokalen Änderungen, beim App-Start, bei Rückkehr in die App und wenn die Internetverbindung wieder verfügbar ist. Werden Änderungen auf beiden Seiten erkannt, fragt Mampfo vor dem Überschreiben nach.</p>
     </section>`;
   }
 
@@ -1546,14 +1597,129 @@
     return `${counts.entries} Ernährung · ${counts.foods} Lebensmittel · ${counts.recipes} Rezepte · ${counts.fastPlans} Pläne · ${counts.fastingSessions} Fastenphasen`;
   }
 
+  function formatCloudSyncTime(value) {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return 'unbekannt';
+    return new Intl.DateTimeFormat('de-DE', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }).format(date);
+  }
+
+  function cloudConflictCollectionLabel(collection) {
+    return ({
+      entries: 'Ernährungseintrag',
+      foods: 'Lebensmittel',
+      recipes: 'Rezept',
+      fastPlans: 'Fastenplan',
+      fastingSessions: 'Fastenphase',
+      settings: 'Tagesziele / Einstellungen'
+    })[collection] || 'Datensatz';
+  }
+
+  function cloudConflictStateSummary(conflict, state, side) {
+    if (!state || state.kind === 'absent') return side === 'local' ? 'Auf diesem Gerät nicht vorhanden' : 'In der Cloud nicht vorhanden';
+    if (state.kind === 'deleted') return side === 'local' ? 'Auf diesem Gerät gelöscht' : 'In der Cloud gelöscht';
+    const item = state.payload || {};
+    if (conflict.collection === 'settings') {
+      const settings = item.settings || {};
+      return `Kalorienziel ${fmt(settings.dailyCalories || 0, 0)} kcal · Proteinziel ${fmt(settings.dailyProtein || 0)} g`;
+    }
+    if (conflict.collection === 'entries') return `${item.name || 'Eintrag'} · ${item.date || ''} ${item.time || ''} · ${fmt(item.calories || 0, 0)} kcal`;
+    if (conflict.collection === 'foods') return `${item.name || 'Lebensmittel'} · ${fmt(item.calories || 0, 0)} kcal · ${amountLabel(item.baseAmount || 1, item.baseUnit || 'portion')}`;
+    if (conflict.collection === 'recipes') return `${item.name || 'Rezept'} · ${fmt(item.servings || 1)} ${Number(item.servings || 1) === 1 ? 'Portion' : 'Portionen'}`;
+    if (conflict.collection === 'fastPlans') return `${item.preset || 'Fastenplan'} · ${item.anchorTime || '–'} Uhr`;
+    if (conflict.collection === 'fastingSessions') {
+      const start = item.startAt ? new Date(item.startAt) : null;
+      const end = item.endAt ? new Date(item.endAt) : null;
+      const f = d => d && !Number.isNaN(d.getTime()) ? new Intl.DateTimeFormat('de-DE', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }).format(d) : '–';
+      return `${f(start)} → ${item.endAt ? f(end) : 'läuft'}`;
+    }
+    return 'Geänderte Version';
+  }
+
+  function openCloudConflictResolver() {
+    const cloud = window.MampfoCloud;
+    const list = cloud?.conflicts?.() || [];
+    if (!list.length) {
+      modalRoot.innerHTML = '';
+      showToast('Keine offenen Konflikte.');
+      if (state.view === 'settings') render();
+      return;
+    }
+    const conflict = list[0];
+    const localSummary = cloudConflictStateSummary(conflict, conflict.local, 'local');
+    const remoteSummary = cloudConflictStateSummary(conflict, conflict.remote, 'cloud');
+    modalRoot.innerHTML = `<div class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="cloud-conflict-title"><div class="modal cloud-conflict-modal">
+      <div class="modal-icon lavender">↔</div>
+      <h2 id="cloud-conflict-title">Synchronisationskonflikt</h2>
+      <p><strong>${esc(cloudConflictCollectionLabel(conflict.collection))}</strong> wurde auf zwei Seiten unterschiedlich geändert. Mampfo überschreibt keine Version automatisch.</p>
+      <div class="cloud-conflict-progress">Konflikt 1 von ${list.length}</div>
+      <div class="cloud-conflict-compare">
+        <div><small>Dieses Gerät</small><strong>${esc(localSummary)}</strong></div>
+        <div><small>Cloud / anderes Gerät</small><strong>${esc(remoteSummary)}</strong></div>
+      </div>
+      <div class="modal-actions">
+        <button class="primary-button" id="cloud-use-local">Dieses Gerät verwenden</button>
+        <button class="secondary-button" id="cloud-use-remote">Cloud-Version verwenden</button>
+        <button class="secondary-button" id="cloud-conflict-later">Später entscheiden</button>
+      </div>
+    </div></div>`;
+    document.getElementById('cloud-conflict-later').onclick = () => { modalRoot.innerHTML = ''; };
+    const resolve = async choice => {
+      const localButton = document.getElementById('cloud-use-local');
+      const remoteButton = document.getElementById('cloud-use-remote');
+      localButton.disabled = true; remoteButton.disabled = true;
+      try {
+        const result = await cloud.resolveConflict(conflict.id, choice, CFG.version);
+        showToast(choice === 'local' ? 'Version dieses Geräts übernommen.' : 'Cloud-Version übernommen.');
+        if (result.remaining > 0) openCloudConflictResolver();
+        else {
+          modalRoot.innerHTML = '';
+          if (state.view === 'settings') render();
+        }
+      } catch (error) {
+        localButton.disabled = false; remoteButton.disabled = false;
+        showToast(error.message || 'Konflikt konnte nicht gelöst werden.');
+      }
+    };
+    document.getElementById('cloud-use-local').onclick = () => resolve('local');
+    document.getElementById('cloud-use-remote').onclick = () => resolve('cloud');
+  }
+
+  async function runCloudSync() {
+    const cloud = window.MampfoCloud;
+    const button = document.getElementById('cloud-sync');
+    if (!cloud || !button) return;
+    button.disabled = true;
+    button.textContent = 'Synchronisierung läuft …';
+    try {
+      const result = await cloud.syncNow(CFG.version, { reason: 'manual' });
+      const parts = [];
+      if (result.uploaded) parts.push(`${result.uploaded} hochgeladen`);
+      if (result.downloaded) parts.push(`${result.downloaded} übernommen`);
+      if (!parts.length) parts.push('alles aktuell');
+      showToast(`Synchronisiert · ${parts.join(' · ')}`);
+      render();
+      if (result.conflicts) window.setTimeout(openCloudConflictResolver, 80);
+    } catch (error) {
+      button.disabled = false;
+      button.textContent = '↻ Jetzt synchronisieren';
+      showToast(error.message || 'Synchronisierung fehlgeschlagen.');
+      refreshCloudStatus();
+    }
+  }
+
   async function refreshCloudStatus() {
     const cloud = window.MampfoCloud;
     const status = document.getElementById('cloud-status-text');
     const summary = document.getElementById('cloud-remote-summary');
     const init = document.getElementById('cloud-initialize');
-    if (!cloud || !status || !summary || !init) return;
+    const sync = document.getElementById('cloud-sync');
+    const conflictButton = document.getElementById('cloud-conflicts');
+    const conflictCount = document.getElementById('cloud-conflict-count');
+    const lastSync = document.getElementById('cloud-last-sync');
+    if (!cloud || !status || !summary || !init || !sync) return;
     status.textContent = 'Cloud-Status wird geprüft …';
     init.disabled = true;
+    sync.disabled = true;
     try {
       const user = await cloud.getUser();
       if (!user) {
@@ -1562,20 +1728,36 @@
         return;
       }
       const counts = await cloud.cloudCounts();
+      const openConflicts = cloud.conflicts()?.length || 0;
       summary.innerHTML = `<span>Cloud</span><strong>${esc(cloudCountsText(counts))}</strong>`;
       if (counts.isEmpty) {
         status.textContent = 'Cloud ist leer · Erst-Upload möglich';
         init.disabled = false;
+        sync.disabled = true;
         init.classList.remove('cloud-blocked');
-      } else {
-        status.textContent = 'Cloud enthält bereits Mampfo-Daten';
+      } else if (counts.isInitialized) {
+        status.textContent = openConflicts ? `Synchronisation aktiv · ${openConflicts} ${openConflicts === 1 ? 'Konflikt' : 'Konflikte'} offen` : 'Synchronisation aktiv · bereit';
         init.disabled = true;
+        sync.disabled = false;
         init.classList.add('cloud-blocked');
+      } else {
+        status.textContent = 'Cloud enthält Daten, ist aber nicht als Mampfo-Cloud initialisiert';
+        init.disabled = true;
+        sync.disabled = true;
+      }
+      if (conflictCount) conflictCount.textContent = String(openConflicts);
+      conflictButton?.classList.toggle('hidden', openConflicts === 0);
+      const info = cloud.syncStatus();
+      if (lastSync) {
+        if (info?.lastError) lastSync.textContent = `Letzter Versuch: ${info.lastError}`;
+        else if (info?.lastSyncAt) lastSync.textContent = `Zuletzt synchronisiert: ${formatCloudSyncTime(info.lastSyncAt)}`;
+        else lastSync.textContent = 'Noch kein vollständiger Geräteabgleich';
       }
     } catch (error) {
       status.textContent = error.message || 'Cloud-Prüfung fehlgeschlagen.';
       summary.innerHTML = '<span>Cloud</span><strong>nicht verfügbar</strong>';
       init.disabled = true;
+      sync.disabled = true;
     }
   }
 
@@ -1593,7 +1775,7 @@
         <div><span>Fastenpläne</span><strong>${counts.fastPlans}</strong></div>
         <div><span>Fastenphasen</span><strong>${counts.fastingSessions}</strong></div>
       </div>
-      <p class="cloud-warning">Vor dem Upload prüft Mampfo die Cloud noch einmal. Ist sie nicht leer, wird der Vorgang abgebrochen.</p>
+      <p class="cloud-warning">Vor dem Upload prüft Mampfo die Cloud noch einmal. Ist sie nicht leer, wird der Vorgang abgebrochen. Danach übernimmt v0.6.2 den regulären Geräteabgleich.</p>
       <div class="modal-actions"><button class="primary-button" id="confirm-cloud-init">Jetzt hochladen</button><button class="secondary-button" id="cancel-cloud-init">Abbrechen</button></div>
     </div></div>`;
     document.getElementById('cancel-cloud-init').onclick = () => { modalRoot.innerHTML = ''; };
@@ -1602,10 +1784,10 @@
       button.disabled = true;
       button.textContent = 'Upload läuft …';
       try {
-        const result = await cloud.initializeCloud(CFG.version);
+        await cloud.initializeCloud(CFG.version);
         modalRoot.innerHTML = '';
         showToast('Mampfo Cloud wurde initialisiert.');
-        await refreshCloudStatus();
+        render();
       } catch (error) {
         button.disabled = false;
         button.textContent = 'Jetzt hochladen';
@@ -1629,8 +1811,9 @@
       button.textContent = 'Anmeldung …';
       try {
         await cloud.signIn(email, password);
-        showToast('Angemeldet.');
+        showToast('Angemeldet. Geräteabgleich wird vorbereitet.');
         render();
+        cloud.scheduleSync?.(CFG.version, { delay: 500, reason: 'after-login' });
       } catch (error) {
         button.disabled = false;
         button.textContent = 'Anmelden';
@@ -1668,6 +1851,8 @@
       render();
     });
     document.getElementById('cloud-check')?.addEventListener('click', refreshCloudStatus);
+    document.getElementById('cloud-sync')?.addEventListener('click', runCloudSync);
+    document.getElementById('cloud-conflicts')?.addEventListener('click', openCloudConflictResolver);
     document.getElementById('cloud-initialize')?.addEventListener('click', confirmCloudInitialization);
     if (cloud.currentUser()) refreshCloudStatus();
   }
@@ -1692,7 +1877,7 @@
       <div class="settings-title">☁ Datenaustausch</div>
       ${cloudSettingsMarkup()}
 
-      <div class="settings-note">${icon('rocket')}<br>Ernährung, Rezepte, Fasten und die vollständige Auswertung sind verfügbar. v0.6.1 bereitet zusätzlich den sicheren Geräteabgleich über Supabase vor.</div>
+      <div class="settings-note">${icon('rocket')}<br>Ernährung, Rezepte, Fasten und die vollständige Auswertung sind verfügbar. v0.6.2 synchronisiert Ernährung, Lebensmittel, Rezepte, Fasten und Tagesziele sicher zwischen deinen angemeldeten Geräten.</div>
       <div class="version">${esc(CFG.appName)} · Version ${esc(CFG.version)}</div>
     </main>${bottomNav('')}`;
 
@@ -4186,8 +4371,11 @@
     } else if (state.view === 'today' && state.selectedDate === todayISO()) {
       updateTodayFastStatus();
     }
+    window.MampfoCloud?.scheduleSync?.(CFG.version, { delay: 400, reason: 'visibility' });
   });
+  window.addEventListener('online', () => window.MampfoCloud?.scheduleSync?.(CFG.version, { delay: 250, reason: 'online' }));
 
-  persist();
+  persist({ skipCloud: true });
   render();
+  window.MampfoCloud?.onAppReady?.(CFG.version);
 })();

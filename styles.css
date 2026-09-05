@@ -1559,3 +1559,49 @@ button { cursor: pointer; }
 @media (min-width: 620px) {
   .cloud-counts { grid-template-columns: repeat(5, 1fr); }
 }
+
+/* v0.6.2 – Geräteabgleich */
+.cloud-last-sync {
+  margin-top: 8px;
+  padding: 7px 9px;
+  border-radius: 10px;
+  background: rgba(255,255,255,.5);
+  color: var(--text-3);
+  font-size: .64rem;
+  line-height: 1.4;
+  text-align: center;
+}
+.cloud-conflict-button {
+  background: var(--lavender-pale);
+  color: #6f6387;
+  border: 1px solid #dfd6ec;
+}
+.hidden { display: none !important; }
+.cloud-conflict-modal { max-width: 520px; }
+.cloud-conflict-progress {
+  width: max-content;
+  margin: 10px auto 12px;
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: var(--surface-soft);
+  color: var(--text-3);
+  font-size: .65rem;
+  font-weight: 760;
+}
+.cloud-conflict-compare {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0 15px;
+}
+.cloud-conflict-compare > div {
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: white;
+}
+.cloud-conflict-compare > div:first-child { background: var(--sage-pale); border-color: #dae7d6; }
+.cloud-conflict-compare > div:last-child { background: var(--bluegray-pale); border-color: #d7e4e9; }
+.cloud-conflict-compare small,
+.cloud-conflict-compare strong { display: block; }
+.cloud-conflict-compare small { margin-bottom: 4px; color: var(--text-3); font-size: .63rem; }
+.cloud-conflict-compare strong { font-size: .78rem; line-height: 1.45; }

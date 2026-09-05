@@ -1,6 +1,58 @@
-# Mampfo v0.6.1
+# Mampfo v0.6.2
 
 Mampfo ist eine persönliche **Local-first-PWA** zum Ernährungstracking. Die App funktioniert weiterhin vollständig mit lokalen Daten; v0.6.1 ergänzt optional ein Supabase-Fundament für den späteren geräteübergreifenden Datenaustausch.
+
+## Neu in v0.6.2 – Geräteübergreifende Synchronisation
+
+v0.6.2 aktiviert den eigentlichen bidirektionalen Abgleich zwischen mehreren Mampfo-Geräten. Die App bleibt **Local-first**: Daten werden lokal gespeichert und anschließend über die persönliche Supabase-Cloud abgeglichen.
+
+### Automatisch synchronisiert werden
+
+- Ernährungseinträge
+- gespeicherte Lebensmittel und Favoriten
+- Rezepte inklusive Zutaten-Snapshots
+- Fastenpläne
+- Fasten-Sessions
+- Tagesziele / Einstellungen
+
+### Abgleichslogik
+
+- neue Datensätze mit unterschiedlichen IDs werden automatisch zusammengeführt
+- nur lokal geänderte Datensätze werden in die Cloud übertragen
+- nur in der Cloud geänderte Datensätze werden lokal übernommen
+- identische Änderungen auf beiden Seiten werden ohne Konflikt akzeptiert
+- unterschiedliche Änderungen desselben Datensatzes werden **nicht** automatisch überschrieben
+- Konflikte können mit **Dieses Gerät verwenden** oder **Cloud-Version verwenden** gelöst werden
+
+### Löschungen
+
+Löschungen werden mit synchronisiert. Dafür nutzt die Cloud Löschmarken, sodass ein auf einem Gerät gelöschter Datensatz auf einem anderen Gerät nicht wieder auftaucht. Fasten-Sessions behalten zusätzlich die für die bestehende Fastenlogik wichtigen Tombstones.
+
+### Automatischer Sync
+
+Mampfo stößt den Abgleich an:
+
+- nach gespeicherten lokalen Änderungen
+- beim App-Start
+- bei Rückkehr aus dem Hintergrund
+- wenn die Internetverbindung wieder verfügbar ist
+- manuell über **Jetzt synchronisieren**
+
+Während eines offenen Bearbeitungsformulars oder Dialogs wird kein automatischer Cloud-Pull gestartet.
+
+### Update von v0.6.1
+
+Das Supabase-Schema aus v0.6.1 ist bereits kompatibel; es ist keine Datenbankmigration nötig. Beim Aktualisieren auf GitHub die bereits ausgefüllte **`supabase-config.js` unbedingt behalten** oder die beiden Werte anschließend wieder eintragen.
+
+### Technik
+
+- bestehende Mampfo-Daten bleiben unter denselben LocalStorage-Schlüsseln
+- Datenmodell bleibt Version 4
+- neuer lokaler Sync-Vergleichsstand `mampfo.syncBaseline.v2.<userId>`
+- offene Konflikte werden lokal unter `mampfo.syncConflicts.v2.<userId>` gespeichert
+- Cloud-Löschungen nutzen die bereits vorhandene Spalte `deleted_at`
+- kein Realtime-Zwang; Synchronisation erfolgt ereignisbasiert
+- Service-Worker-Cache: `mampfo-v0.6.2`
 
 ## Neu in v0.6.1 – Mampfo Cloud: Fundament
 
