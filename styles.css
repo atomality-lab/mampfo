@@ -1475,3 +1475,41 @@ button { cursor: pointer; }
   .stats-fast-session-values { grid-column: 2; text-align: left; display: flex; align-items: baseline; gap: 8px; }
   .stats-fast-session-values strong, .stats-fast-session-values small { display: inline; }
 }
+
+
+/* v0.5.3 – Rhythmus & Gesamtübersicht */
+.stats-kpi-card.rhythm-first { background: var(--apricot-pale); border-color: #f0ddca; }
+.stats-kpi-card.rhythm-last { background: var(--lavender-pale); border-color: #e1daeb; }
+.stats-kpi-card.rhythm-window { background: var(--sage-pale); border-color: #dce8d7; }
+.stats-kpi-card.rhythm-first .stats-kpi-icon { color: #b9824f; }
+.stats-kpi-card.rhythm-last .stats-kpi-icon { color: #75698b; }
+.stats-kpi-card.rhythm-window .stats-kpi-icon { color: var(--sage-dark); }
+.stats-rhythm-view { display: grid; gap: 13px; }
+.stats-rhythm-kpi-grid, .stats-rhythm-overview-grid { grid-template-columns: 1fr; }
+.stats-rhythm-card, .stats-comparison-card { border: 1px solid var(--line); border-radius: 20px; background: rgba(255,255,255,.78); padding: 14px; box-shadow: 0 7px 18px rgba(41,54,46,.035); }
+.stats-rhythm-list { display: grid; gap: 1px; overflow: hidden; border: 1px solid var(--line); border-radius: 14px; background: var(--line); }
+.stats-rhythm-row { border: 0; background: white; color: var(--text); display: grid; grid-template-columns: 58px minmax(90px,1fr); gap: 9px; align-items: center; padding: 10px; text-align: left; }
+.stats-rhythm-date strong, .stats-rhythm-date small, .stats-rhythm-values strong, .stats-rhythm-values small { display:block; }
+.stats-rhythm-date strong { font-size: .72rem; }
+.stats-rhythm-date small { margin-top: 2px; color: var(--text-3); font-size: .58rem; }
+.stats-rhythm-track { grid-column: 2; position: relative; height: 12px; border-radius: 999px; background: linear-gradient(to right, rgba(105,116,108,.055) 0 24.8%, rgba(105,116,108,.13) 25% 25.4%, rgba(105,116,108,.055) 25.6% 49.8%, rgba(105,116,108,.13) 50% 50.4%, rgba(105,116,108,.055) 50.6% 74.8%, rgba(105,116,108,.13) 75% 75.4%, rgba(105,116,108,.055) 75.6%); overflow: visible; }
+.stats-rhythm-window { position:absolute; top:3px; height:6px; border-radius:999px; background: var(--sage); min-width:3px; }
+.stats-rhythm-dot { position:absolute; top:1px; width:10px; height:10px; margin-left:-5px; border-radius:50%; background:white; border:2px solid var(--sage-dark); }
+.stats-rhythm-dot.last { border-color:#75698b; }
+.stats-rhythm-values { grid-column: 1 / -1; padding-left: 67px; }
+.stats-rhythm-values strong { font-size: .72rem; }
+.stats-rhythm-values small { margin-top:2px; color: var(--text-3); font-size:.61rem; line-height:1.4; }
+.stats-rhythm-axis { display:flex; justify-content:space-between; padding:5px 3px 0 67px; color:var(--text-3); font-size:.55rem; }
+.stats-comparison-grid { display:grid; gap:1px; overflow:hidden; border:1px solid var(--line); border-radius:14px; background:var(--line); }
+.stats-comparison-grid > div { display:grid; grid-template-columns: 1fr auto; gap:4px 10px; align-items:baseline; padding:10px 12px; background:white; }
+.stats-comparison-grid span { color:var(--text-2); font-size:.7rem; }
+.stats-comparison-grid strong { font-size:.78rem; }
+.stats-comparison-grid small { grid-column:1 / -1; color:var(--text-3); font-size:.61rem; }
+@media (min-width: 620px) {
+  .stats-rhythm-kpi-grid, .stats-rhythm-overview-grid { grid-template-columns: repeat(3, 1fr); }
+  .stats-rhythm-row { grid-template-columns: 72px minmax(180px,1fr) 210px; }
+  .stats-rhythm-track { grid-column: 2; }
+  .stats-rhythm-values { grid-column: 3; padding-left:0; }
+  .stats-rhythm-axis { padding-left:81px; padding-right:219px; }
+  .stats-comparison-grid { grid-template-columns: 1fr 1fr; gap:1px; }
+}

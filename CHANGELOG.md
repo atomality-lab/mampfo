@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.5.3 – Rhythmus & Gesamtübersicht
+
+### Neu
+- Bereich **Auswertung → Rhythmus** vollständig aktiviert
+- erste und letzte Mahlzeit pro Kalendertag
+- durchschnittliche erste und letzte Mahlzeit
+- tatsächliches Essensfenster pro Tag und im Durchschnitt
+- Tage mit nur einem Ernährungseintrag werden korrekt als nicht berechenbares Essensfenster behandelt
+- 24-Stunden-Tagesrhythmus mit erster/letzter Mahlzeit und Fastenzeit des Tages
+- neutrale Kennzeichnung, wenn erste oder letzte Mahlzeit außerhalb des damaligen Planfensters liegt
+- Gesamtübersicht um drei Rhythmus-Kennzahlen ergänzt
+- neutraler Vergleich mit dem vorherigen Zeitraum für Kalorien, Protein, Fastenzeit, erste Mahlzeit und Essensfenster
+- Service-Worker-Cache auf v0.5.3 aktualisiert
+
+### Datenlogik
+- keine neuen Statistik-Snapshots; alle Werte werden live aus Tagebuch, Fastenplänen und Fasten-Sessions berechnet
+- heutiger laufender Tag bleibt standardmäßig aus Durchschnittswerten ausgeschlossen
+- bestehende Daten bleiben unverändert, Datenmodell bleibt Version 4
+
 ## v0.5.2.2 – KPI-Icons in Auswertung korrigiert
 
 ### Korrigiert

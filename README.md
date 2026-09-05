@@ -1,7 +1,33 @@
-# Mampfo v0.5.2.2
+# Mampfo v0.5.3
 
 Mampfo ist eine persönliche, lokal gespeicherte PWA zum Ernährungstracking.
 
+
+## Neu in v0.5.3 – Rhythmus & Gesamtübersicht
+
+Mit v0.5.3 ist die Auswertung vollständig: Neben Ernährung und Fasten analysiert Mampfo nun auch den tatsächlichen Essensrhythmus.
+
+### Rhythmus
+
+- erste Mahlzeit pro Tag
+- letzte Mahlzeit pro Tag
+- tatsächliches Essensfenster zwischen erster und letzter Mahlzeit
+- Durchschnittswerte für alle drei Kennzahlen
+- Tagesrhythmus auf einer 24-Stunden-Zeitlinie
+- Fastenzeit des jeweiligen Kalendertages wird in der Rhythmuszeile mit angezeigt
+- bei nur einem Ernährungseintrag wird kein künstliches Essensfenster berechnet
+- Abweichungen vom damaligen geplanten Essensfenster werden neutral gekennzeichnet
+
+### Gesamtübersicht und Vergleich
+
+Die Übersicht zeigt zusätzlich die drei Rhythmus-Kennzahlen und einen neutralen Vergleich mit dem vorherigen Zeitraum. Verglichen werden Kalorien, Protein, Fastenzeit, Zeitpunkt der ersten Mahlzeit und Essensfenster. Veränderungen werden nur beschrieben, nicht bewertet.
+
+### Technik
+
+- keine neuen persistenten Statistikdaten
+- bestehende Tagebuch-, Lebensmittel-, Rezept- und Fastendaten bleiben unverändert
+- Datenmodell bleibt Version 4
+- Service-Worker-Cache: `mampfo-v0.5.3`
 
 ## Neu in v0.5.2.2 – KPI-Icons in der Auswertung korrigiert
 
@@ -69,7 +95,7 @@ Ein Tipp auf einen Fastenbalken öffnet die Fastenzeiten des Kalendertages, z. B
 
 ## Neu in v0.5.1 – Ernährungsauswertung
 
-Das Hauptregister **Auswertung** wurde mit v0.5.1 aktiviert. Die Ernährungsauswertung bleibt unverändert verfügbar; Fasten ist ab v0.5.2 ebenfalls aktiv, Rhythmus folgt in v0.5.3.
+Das Hauptregister **Auswertung** wurde mit v0.5.1 aktiviert. Die Ernährungsauswertung bleibt unverändert verfügbar; Fasten ist ab v0.5.2 und Rhythmus ab v0.5.3 aktiv.
 
 ### Zeitraum
 

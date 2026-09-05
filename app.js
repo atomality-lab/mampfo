@@ -3628,7 +3628,10 @@
     return `<article class="stats-kpi-card fasting"><span class="stats-kpi-icon-wrap"><span class="stats-kpi-icon">${icon('moon')}</span></span><div><small>Ø Fastenzeit pro Tag</small><strong>${avg.value == null ? '–' : durationText(Math.round(avg.value))}</strong><span>${avg.count} ${avg.count === 1 ? 'geeigneter Tag' : 'geeignete Tage'} · ${tracked} Fastentage</span></div></article>`;
   }
 
-  function statsOverview(days, fastingData) {
+  function statsOverview(days, fastingData, rhythmData, nutritionData) {
+    const first = statsRhythmAverage(rhythmData.days, 'firstMinutes');
+    const last = statsRhythmAverage(rhythmData.days, 'lastMinutes');
+    const windowAvg = statsRhythmAverage(rhythmData.days, 'windowMinutes');
     return `<section class="stats-overview">
       <div class="stats-kpi-grid stats-kpi-grid-four">
         ${statsAverageCard('calories', days)}
@@ -3636,13 +3639,13 @@
         ${statsAverageCard('fiber', days)}
         ${statsFastingAverageCard(fastingData)}
       </div>
+      <div class="stats-kpi-grid stats-rhythm-overview-grid">
+        ${statsRhythmCard('Ø erste Mahlzeit', statsClockAverageText(first.value), `${first.count} geeignete Tage`, 'sun', 'rhythm-first')}
+        ${statsRhythmCard('Ø letzte Mahlzeit', statsClockAverageText(last.value), `${last.count} geeignete Tage`, 'moon', 'rhythm-last')}
+        ${statsRhythmCard('Ø Essensfenster', windowAvg.value == null ? '–' : durationText(Math.round(windowAvg.value)), `${windowAvg.count} berechenbare Tage`, 'clock', 'rhythm-window')}
+      </div>
+      ${statsComparisonView(nutritionData, fastingData, rhythmData)}
       ${statsDataBasis(days)}
-      <div class="stats-fast-summary-inline">
-        <span>${icon('moon')}</span><div><strong>Fastenauswertung ist aktiv</strong><small>Kalendertägliche Fastenzeit und zusammenhängende Fastenphasen findest du im Bereich „Fasten“.</small></div>
-      </div>
-      <div class="stats-next-grid stats-next-grid-single">
-        <article class="stats-coming-card"><span>${icon('clock')}</span><div><strong>Rhythmus</strong><small>Erste und letzte Mahlzeit sowie Essensfenster folgen in v0.5.3.</small></div></article>
-      </div>
     </section>`;
   }
 
@@ -3739,19 +3742,166 @@
     </section>`;
   }
 
-  function statsComingView(type) {
-    return `<section class="stats-coming-large"><div>${icon('clock')}</div><h2>Rhythmus</h2><p>Erste und letzte Mahlzeit sowie das tatsächliche Essensfenster folgen mit v0.5.3.</p></section>`;
+  function statsRangeDayCount(range) {
+    return statsDatesBetween(range.start, range.end).length;
+  }
+
+  function statsPreviousRange(range) {
+    const [sy, sm, sd] = range.start.split('-').map(Number);
+    if (state.statsPeriod === 'month' || state.statsPeriod === 'prevMonth') {
+      const startDate = new Date(sy, sm - 2, 1);
+      const endDate = new Date(sy, sm - 1, 0);
+      return { start: statsDateISO(startDate), end: statsDateISO(endDate), label: 'Vorheriger Monat' };
+    }
+    const count = Math.max(1, statsRangeDayCount(range));
+    return { start: offsetDate(range.start, -count), end: offsetDate(range.start, -1), label: `Vorherige ${count} Tage` };
+  }
+
+  function statsNutritionForRange(range) {
+    return { range, days: statsDatesBetween(range.start, range.end).map(statsNutritionDay) };
+  }
+
+  function statsRhythmDay(date) {
+    const entries = dailyEntries(date);
+    if (!entries.length) return { date, entries, hasData: false, firstMinutes: null, lastMinutes: null, windowMinutes: null };
+    const times = entries.map(entry => parseClockMinutes(entry.time)).filter(value => value != null).sort((a,b) => a-b);
+    if (!times.length) return { date, entries, hasData: false, firstMinutes: null, lastMinutes: null, windowMinutes: null };
+    const firstMinutes = times[0];
+    const lastMinutes = times[times.length - 1];
+    return { date, entries, hasData: true, firstMinutes, lastMinutes, windowMinutes: times.length >= 2 ? Math.max(0, lastMinutes - firstMinutes) : null };
+  }
+
+  function statsRhythmData(range = statsPeriodRange()) {
+    return { range, days: statsDatesBetween(range.start, range.end).map(statsRhythmDay) };
+  }
+
+  function statsEligibleRhythmDays(days, key) {
+    const today = todayISO();
+    return days.filter(day => day.hasData && day[key] != null && (state.statsIncludeToday || day.date !== today));
+  }
+
+  function statsRhythmAverage(days, key) {
+    const eligible = statsEligibleRhythmDays(days, key);
+    if (!eligible.length) return { value: null, count: 0 };
+    return { value: eligible.reduce((sum, day) => sum + Number(day[key]), 0) / eligible.length, count: eligible.length };
+  }
+
+  function statsClockAverageText(value) {
+    return value == null ? '–' : clockFromMinutes(Math.round(value));
+  }
+
+  function statsRhythmCard(label, value, sub, iconName, cls='rhythm') {
+    return `<article class="stats-kpi-card ${cls}"><span class="stats-kpi-icon-wrap"><span class="stats-kpi-icon">${icon(iconName)}</span></span><div><small>${esc(label)}</small><strong>${esc(value)}</strong><span>${esc(sub)}</span></div></article>`;
+  }
+
+  function statsPlanEatingInfoForDay(date) {
+    const probe = statsDayStart(date); probe.setHours(12,0,0,0);
+    const plan = planEffectiveAt(probe);
+    if (!plan) return null;
+    const windows = planWindows(plan);
+    if (!windows) return null;
+    const start = parseClockMinutes(windows.eatingStart);
+    const end = parseClockMinutes(windows.eatingEnd);
+    return { start, end, label: `${windows.eatingStart}–${windows.eatingEnd}` };
+  }
+
+  function statsTimeInsideWindow(minutes, planInfo) {
+    if (!planInfo || minutes == null) return null;
+    const { start, end } = planInfo;
+    if (start == null || end == null) return null;
+    if (start <= end) return minutes >= start && minutes <= end;
+    return minutes >= start || minutes <= end;
+  }
+
+  function statsRhythmTimeline(days, fastingData) {
+    const fastingByDate = new Map((fastingData?.days || []).map(day => [day.date, day]));
+    const rows = days.filter(day => day.hasData);
+    if (!rows.length) return `<section class="stats-coming-large"><div>${icon('clock')}</div><h2>Noch keine Essenszeiten</h2><p>Für den gewählten Zeitraum gibt es keine Ernährungseinträge, aus denen ein Tagesrhythmus berechnet werden kann.</p></section>`;
+    return `<section class="stats-rhythm-card"><div class="stats-chart-head"><div><small>Tatsächliche Zeiten</small><h3>Tagesrhythmus</h3></div><span class="stats-target-note">00–24 Uhr</span></div>
+      <div class="stats-rhythm-list">${rows.map(day => {
+        const firstPct = day.firstMinutes / 1440 * 100;
+        const lastPct = day.lastMinutes / 1440 * 100;
+        const widthPct = Math.max(0.8, lastPct - firstPct);
+        const planInfo = statsPlanEatingInfoForDay(day.date);
+        const outside = planInfo && (!statsTimeInsideWindow(day.firstMinutes, planInfo) || !statsTimeInsideWindow(day.lastMinutes, planInfo));
+        const fastDay = fastingByDate.get(day.date);
+        return `<button class="stats-rhythm-row" data-stats-rhythm-day="${day.date}">
+          <span class="stats-rhythm-date"><strong>${statsDayLabel(day.date, true)}</strong><small>${day.entries.length} ${day.entries.length === 1 ? 'Eintrag' : 'Einträge'}</small></span>
+          <span class="stats-rhythm-track"><i class="stats-rhythm-window" style="left:${firstPct.toFixed(2)}%;width:${widthPct.toFixed(2)}%"></i><i class="stats-rhythm-dot first" style="left:${firstPct.toFixed(2)}%"></i><i class="stats-rhythm-dot last" style="left:${lastPct.toFixed(2)}%"></i></span>
+          <span class="stats-rhythm-values"><strong>${clockFromMinutes(day.firstMinutes)}–${clockFromMinutes(day.lastMinutes)}</strong><small>${day.windowMinutes == null ? 'Essensfenster offen' : durationText(day.windowMinutes)}${fastDay?.hasData ? ` · ${durationText(Math.round(fastDay.totalMinutes))} Fasten` : ''}${outside ? ' · außerhalb Planfenster' : ''}</small></span>
+        </button>`;
+      }).join('')}</div>
+      <div class="stats-rhythm-axis"><span>00</span><span>06</span><span>12</span><span>18</span><span>24</span></div>
+      <p class="stats-chart-help">Die Linie verbindet erste und letzte erfasste Mahlzeit des Tages. Ein einzelner Eintrag liefert noch kein Essensfenster.</p>
+    </section>`;
+  }
+
+  function statsRhythmView(data, fastingData) {
+    const first = statsRhythmAverage(data.days, 'firstMinutes');
+    const last = statsRhythmAverage(data.days, 'lastMinutes');
+    const windowAvg = statsRhythmAverage(data.days, 'windowMinutes');
+    const tracked = data.days.filter(day => day.hasData).length;
+    const windows = data.days.filter(day => day.windowMinutes != null).length;
+    return `<section class="stats-rhythm-view">
+      <div class="stats-kpi-grid stats-rhythm-kpi-grid">
+        ${statsRhythmCard('Ø erste Mahlzeit', statsClockAverageText(first.value), `${first.count} ${first.count === 1 ? 'geeigneter Tag' : 'geeignete Tage'}`, 'sun', 'rhythm-first')}
+        ${statsRhythmCard('Ø letzte Mahlzeit', statsClockAverageText(last.value), `${last.count} ${last.count === 1 ? 'geeigneter Tag' : 'geeignete Tage'}`, 'moon', 'rhythm-last')}
+        ${statsRhythmCard('Ø Essensfenster', windowAvg.value == null ? '–' : durationText(Math.round(windowAvg.value)), `${windowAvg.count} ${windowAvg.count === 1 ? 'berechenbarer Tag' : 'berechenbare Tage'}`, 'clock', 'rhythm-window')}
+      </div>
+      ${statsRhythmTimeline(data.days, fastingData)}
+      <details class="stats-data-basis"><summary>Datenbasis · Essenszeiten an ${tracked} von ${data.days.length} Tagen</summary><div class="stats-data-grid"><div><span>Tage mit Ernährungseinträgen</span><strong>${tracked} von ${data.days.length}</strong></div><div><span>Tage mit berechenbarem Essensfenster</span><strong>${windows} von ${data.days.length}</strong></div><div><span>Durchschnitt heute</span><strong>${state.statsIncludeToday ? 'einbezogen' : 'ausgeschlossen'}</strong></div></div></details>
+    </section>`;
+  }
+
+  function statsSigned(value, digits=0, unit='') {
+    if (value == null || !Number.isFinite(value)) return '–';
+    const rounded = cleanNumber(value, digits);
+    const prefix = rounded > 0 ? '+' : '';
+    return `${prefix}${fmt(rounded, digits)}${unit ? ` ${unit}` : ''}`;
+  }
+
+  function statsTimeDeltaText(minutes) {
+    if (minutes == null || !Number.isFinite(minutes)) return '–';
+    const rounded = Math.round(minutes);
+    if (!rounded) return '±0 min';
+    return `${rounded > 0 ? '+' : '−'}${Math.abs(rounded)} min ${rounded > 0 ? 'später' : 'früher'}`;
+  }
+
+  function statsComparisonView(currentNutrition, currentFasting, currentRhythm) {
+    const previousRange = statsPreviousRange(currentNutrition.range);
+    const prevNutrition = statsNutritionForRange(previousRange);
+    const prevFasting = statsFastingData(previousRange);
+    const prevRhythm = statsRhythmData(previousRange);
+    const cCal = statsAverage(currentNutrition.days, 'calories').value;
+    const pCal = statsAverage(prevNutrition.days, 'calories').value;
+    const cPro = statsAverage(currentNutrition.days, 'protein').value;
+    const pPro = statsAverage(prevNutrition.days, 'protein').value;
+    const cFast = statsAverageFastingDay(currentFasting.days).value;
+    const pFast = statsAverageFastingDay(prevFasting.days).value;
+    const cFirst = statsRhythmAverage(currentRhythm.days, 'firstMinutes').value;
+    const pFirst = statsRhythmAverage(prevRhythm.days, 'firstMinutes').value;
+    const cWindow = statsRhythmAverage(currentRhythm.days, 'windowMinutes').value;
+    const pWindow = statsRhythmAverage(prevRhythm.days, 'windowMinutes').value;
+    const row = (label, current, previous, delta) => `<div><span>${esc(label)}</span><strong>${esc(current)}</strong><small>${esc(delta)} · vorher ${esc(previous)}</small></div>`;
+    return `<section class="stats-comparison-card"><div class="stats-chart-head"><div><small>Neutraler Vergleich</small><h3>Vorheriger Zeitraum</h3></div><span class="stats-target-note">${esc(previousRange.label)}</span></div><div class="stats-comparison-grid">
+      ${row('Kalorien', cCal == null ? '–' : `${fmt(cCal,0)} kcal`, pCal == null ? '–' : `${fmt(pCal,0)} kcal`, cCal == null || pCal == null ? '–' : statsSigned(cCal-pCal,0,'kcal'))}
+      ${row('Protein', cPro == null ? '–' : `${fmt(cPro,1)} g`, pPro == null ? '–' : `${fmt(pPro,1)} g`, cPro == null || pPro == null ? '–' : statsSigned(cPro-pPro,1,'g'))}
+      ${row('Fastenzeit', cFast == null ? '–' : durationText(Math.round(cFast)), pFast == null ? '–' : durationText(Math.round(pFast)), cFast == null || pFast == null ? '–' : statsSigned(Math.round(cFast-pFast),0,'min'))}
+      ${row('Erste Mahlzeit', statsClockAverageText(cFirst), statsClockAverageText(pFirst), cFirst == null || pFirst == null ? '–' : statsTimeDeltaText(cFirst-pFirst))}
+      ${row('Essensfenster', cWindow == null ? '–' : durationText(Math.round(cWindow)), pWindow == null ? '–' : durationText(Math.round(pWindow)), cWindow == null || pWindow == null ? '–' : statsSigned(Math.round(cWindow-pWindow),0,'min'))}
+    </div><p class="stats-chart-help">Die Veränderungen werden nur beschrieben und nicht bewertet.</p></section>`;
   }
 
   function renderStats() {
     const nutrition = statsNutritionData();
     const fasting = statsFastingData(nutrition.range);
+    const rhythm = statsRhythmData(nutrition.range);
     app.innerHTML = `<main class="page stats-page">
       <header class="topbar"><div><div class="brand-kicker">${esc(CFG.appName)}</div><h1>Auswertung</h1></div><button class="icon-button" data-nav="settings" aria-label="Einstellungen">${icon('settings')}</button></header>
       ${statsTabBar()}
       ${statsPeriodControls(nutrition.range)}
       <div class="stats-content">
-        ${state.statsTab === 'overview' ? statsOverview(nutrition.days, fasting) : state.statsTab === 'nutrition' ? statsNutritionView(nutrition.days) : state.statsTab === 'fasting' ? statsFastingView(fasting) : statsComingView(state.statsTab)}
+        ${state.statsTab === 'overview' ? statsOverview(nutrition.days, fasting, rhythm, nutrition) : state.statsTab === 'nutrition' ? statsNutritionView(nutrition.days) : state.statsTab === 'fasting' ? statsFastingView(fasting) : statsRhythmView(rhythm, fasting)}
       </div>
     </main>${bottomNav('stats')}`;
     bindStats();
@@ -3776,6 +3926,7 @@
     });
     document.querySelectorAll('[data-stats-day]').forEach(btn => btn.onclick = () => showStatsDayDetail(btn.dataset.statsDay));
     document.querySelectorAll('[data-stats-fast-day]').forEach(btn => btn.onclick = () => showStatsFastingDayDetail(btn.dataset.statsFastDay));
+    document.querySelectorAll('[data-stats-rhythm-day]').forEach(btn => btn.onclick = () => { state.selectedDate = btn.dataset.statsRhythmDay; setView('today'); });
     document.getElementById('stats-open-fasting')?.addEventListener('click', () => { state.fastingTab = 'plan'; setView('fasting'); });
   }
 
