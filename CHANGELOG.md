@@ -1,5 +1,32 @@
 # Changelog
 
+## v0.5.2 – Fastenauswertung
+
+### Neu
+- Bereich **Auswertung → Fasten** vollständig aktiviert
+- Fastenzeit pro Kalendertag mit derselben Tagesaufteilung wie im Fastenverlauf
+- mehrere Fastenzeiträume eines Tages werden automatisch summiert
+- 24-Stunden-Tagesdiagramm mit historischem Fastenziel als individueller Referenz je Tag
+- laufende Fastenphase wird nur bis zur aktuellen Uhrzeit berücksichtigt und gekennzeichnet
+- Durchschnitt der Fastenzeit pro Kalendertag
+- durchschnittliche, längste und kürzeste abgeschlossene Fastenphase
+- Liste zusammenhängender Fasten-Sessions mit Beginn, Ende, Dauer und Ziel
+- Tagesdetail beim Antippen eines Fastenbalkens mit direktem Zugang zum Fastenverlauf
+- Fasten-Kennzahl in der Auswertungsübersicht ergänzt
+
+### Datenlogik
+- Tage vor Einrichtung des Fastenplans gelten als **keine Daten**
+- Tage mit aktivem Fastenplan dürfen 0 min als echten Tageswert enthalten
+- heutiger Tag bleibt sichtbar und ist standardmäßig aus Durchschnittswerten ausgeschlossen
+- laufende Sessions werden nicht als abgeschlossene Fastenphasen in Durchschnitt/Längste/Kürzeste eingerechnet
+- historische Zielwerte werden aus den gespeicherten Sessions/Plänen verwendet
+- keine separaten Statistik-Snapshots; alle Werte werden live berechnet
+
+### Bestehende Daten
+- Tagebuch, Lebensmittel, Rezepte, Fastenpläne und Fasten-Sessions bleiben unverändert
+- Datenmodell bleibt Version 4
+- Service-Worker-Cache auf v0.5.2 aktualisiert
+
 ## v0.5.1 – Ernährungsauswertung
 
 ### Neu

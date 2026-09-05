@@ -1369,3 +1369,67 @@ button { cursor: pointer; }
   .stats-bar-track { height: 155px; width: min(100%, 30px); }
   .stats-bar-value, .stats-bar-label { font-size: .62rem; }
 }
+
+/* v0.5.2 – Fastenauswertung */
+.stats-kpi-card.fasting { background: var(--bluegray-pale); border-color: #d5e1e7; }
+.stats-kpi-card.fasting-phase { background: var(--lavender-pale); border-color: #e1daeb; }
+.stats-kpi-card.fasting-long { background: var(--sage-pale); border-color: #dbe7d7; }
+.stats-kpi-card.fasting-short { background: #f7efe5; border-color: #eadfce; }
+.stats-fast-summary-inline {
+  display: grid; grid-template-columns: 42px 1fr; gap: 11px; align-items: center; padding: 13px 14px;
+  border: 1px solid #d8e4e8; border-radius: 17px; background: rgba(232,241,245,.72);
+}
+.stats-fast-summary-inline > span { width: 42px; height: 42px; border-radius: 14px; display: grid; place-items: center; background: white; color: #677c8b; }
+.stats-fast-summary-inline strong, .stats-fast-summary-inline small { display: block; }
+.stats-fast-summary-inline strong { font-size: .82rem; }
+.stats-fast-summary-inline small { margin-top: 3px; color: var(--text-3); font-size: .68rem; line-height: 1.4; }
+.stats-next-grid-single { grid-template-columns: 1fr !important; }
+.stats-fasting-view { display: grid; gap: 13px; }
+.stats-fast-kpi-grid { grid-template-columns: 1fr 1fr; }
+.stats-bar-chart.fasting .stats-bar-fill { background: #859caf; }
+.stats-bar-chart.fasting .stats-bar-cell.running .stats-bar-fill {
+  background-image: repeating-linear-gradient(135deg, rgba(255,255,255,.18) 0 4px, transparent 4px 8px);
+}
+.stats-target-line.fasting-target { background: rgba(105,93,132,.68); }
+.stats-target-line.fasting-target::after { background: rgba(105,93,132,.78); }
+.stats-fast-sessions-card {
+  border: 1px solid var(--line); border-radius: 20px; background: rgba(255,255,255,.78); padding: 14px 12px;
+  box-shadow: 0 7px 18px rgba(41,54,46,.035);
+}
+.stats-fast-session-list { display: grid; gap: 7px; }
+.stats-fast-session {
+  display: grid; grid-template-columns: 38px minmax(0, 1fr) auto; gap: 9px; align-items: center; padding: 10px;
+  border: 1px solid #e4e1ea; border-radius: 14px; background: #faf8fc;
+}
+.stats-fast-session.running { background: rgba(232,241,245,.72); border-color: #d7e4e9; }
+.stats-fast-session-icon { width: 36px; height: 36px; border-radius: 12px; display: grid; place-items: center; background: var(--lavender-pale); color: #75698b; }
+.stats-fast-session-main { min-width: 0; }
+.stats-fast-session-main strong, .stats-fast-session-main small, .stats-fast-session-values strong, .stats-fast-session-values small { display: block; }
+.stats-fast-session-main strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .76rem; }
+.stats-fast-session-main small { margin-top: 2px; color: var(--text-3); font-size: .62rem; }
+.stats-fast-session-values { text-align: right; white-space: nowrap; }
+.stats-fast-session-values strong { font-size: .75rem; color: #675f7d; }
+.stats-fast-session-values small { margin-top: 2px; color: var(--text-3); font-size: .59rem; }
+.stats-fast-empty { padding: 24px 12px; text-align: center; color: var(--text-3); font-size: .75rem; }
+.stats-fast-day-total {
+  display: grid; gap: 3px; margin: 12px 0; padding: 13px 14px; border-radius: 15px; background: var(--bluegray-pale); border: 1px solid #d8e4e9;
+}
+.stats-fast-day-total small { color: var(--text-3); font-size: .66rem; }
+.stats-fast-day-total strong { font-size: 1.35rem; }
+.stats-fast-day-total span { color: var(--text-2); font-size: .7rem; }
+.stats-fast-day-segments { display: grid; gap: 1px; overflow: hidden; border: 1px solid var(--line); border-radius: 13px; background: var(--line); }
+.stats-fast-day-segment { display: flex; justify-content: space-between; gap: 10px; padding: 10px 11px; background: white; font-size: .72rem; }
+.stats-fast-day-segment span { color: var(--text-2); }
+.stats-fast-day-segment strong { text-align: right; }
+.stats-open-fasting { width: auto; min-width: 160px; margin: 16px auto 0; }
+
+@media (min-width: 680px) {
+  .stats-kpi-grid-four { grid-template-columns: repeat(4, 1fr); }
+  .stats-fast-kpi-grid { grid-template-columns: repeat(4, 1fr); }
+}
+
+@media (max-width: 520px) {
+  .stats-fast-session { grid-template-columns: 34px minmax(0, 1fr); }
+  .stats-fast-session-values { grid-column: 2; text-align: left; display: flex; align-items: baseline; gap: 8px; }
+  .stats-fast-session-values strong, .stats-fast-session-values small { display: inline; }
+}

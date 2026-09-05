@@ -1,11 +1,50 @@
-# Mampfo v0.5.1
+# Mampfo v0.5.2
 
 Mampfo ist eine persönliche, lokal gespeicherte PWA zum Ernährungstracking.
 
 
+## Neu in v0.5.2 – Fastenauswertung
+
+Der Bereich **Auswertung → Fasten** ist jetzt vollständig aktiviert. Er unterscheidet bewusst zwischen der **Fastenzeit eines Kalendertages** und einer **zusammenhängenden Fastenphase**.
+
+### Kalendertägliche Fastenzeit
+
+- Fasten-Sessions über Mitternacht werden wie im Fastenverlauf auf die betroffenen Kalendertage verteilt.
+- Mehrere Fastenzeiträume eines Tages werden summiert.
+- Das Tagesdiagramm zeigt die Fastenzeit auf einer festen 24-Stunden-Skala.
+- Das jeweils damalige Fastenziel erscheint als dezente Referenzmarke.
+- Eine laufende Session wird nur bis zur aktuellen Uhrzeit berechnet und mit **• / läuft** gekennzeichnet.
+- Der heutige Tag bleibt sichtbar und wird standardmäßig nicht in Durchschnittswerte einbezogen.
+
+### Zusammenhängende Fastenphasen
+
+Mampfo zeigt zusätzlich:
+
+- durchschnittliche Dauer einer abgeschlossenen Fastenphase
+- längste Fastenphase
+- kürzeste Fastenphase
+- Liste der vollständigen Sessions mit Beginn, Ende, Dauer und historischem Ziel
+
+Eine laufende Phase darf in der Liste sichtbar sein, wird aber nicht in die Kennzahlen für abgeschlossene Fastenphasen eingerechnet.
+
+### Tagesdetails
+
+Ein Tipp auf einen Fastenbalken öffnet die Fastenzeiten des Kalendertages, z. B. **00:00–09:00** und **19:00–24:00**, inklusive Tagessumme und Ziel. Von dort kann direkt der Fastenverlauf geöffnet werden.
+
+### Datenlogik
+
+- Tage vor Einrichtung des Fastenplans gelten als **keine Daten**.
+- Tage mit aktivem Fastenplan können auch **0 min** Fastenzeit als echten Wert enthalten.
+- Statistiken werden live aus `FastPlans` und `FastingSessions` berechnet; es entstehen keine Statistik-Snapshots.
+- Historische Zielwerte bleiben erhalten.
+- bestehende Ernährungs-, Rezept-, Lebensmittel- und Fastendaten bleiben unverändert
+- Datenmodell bleibt Version 4
+- Service-Worker-Cache: `mampfo-v0.5.2`
+
+
 ## Neu in v0.5.1 – Ernährungsauswertung
 
-Das Hauptregister **Auswertung** ist jetzt aktiviert. v0.5.1 konzentriert sich bewusst auf Ernährung; Fasten- und Rhythmusauswertungen folgen in v0.5.2 und v0.5.3.
+Das Hauptregister **Auswertung** wurde mit v0.5.1 aktiviert. Die Ernährungsauswertung bleibt unverändert verfügbar; Fasten ist ab v0.5.2 ebenfalls aktiv, Rhythmus folgt in v0.5.3.
 
 ### Zeitraum
 

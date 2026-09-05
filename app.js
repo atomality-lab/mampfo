@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const CFG = window.APP_CONFIG || { appName: 'Mampfo', version: '0.5.1' };
+  const CFG = window.APP_CONFIG || { appName: 'Mampfo', version: '0.5.2' };
   const STORAGE = {
     settings: 'mampfo.settings.v2',
     entries: 'mampfo.entries.v2',
@@ -1515,7 +1515,7 @@
         <span class="chev">›</span>
       </button>
 
-      <div class="settings-note">${icon('rocket')}<br>Rezepte, Fastentimer, Fastenverlauf und Ernährungsauswertung sind verfügbar. Fasten- und Rhythmusauswertungen folgen in v0.5.2 und v0.5.3.</div>
+      <div class="settings-note">${icon('rocket')}<br>Rezepte, Fastentimer, Fastenverlauf sowie Ernährungs- und Fastenauswertung sind verfügbar. Die Rhythmusauswertung folgt in v0.5.3.</div>
       <div class="version">${esc(CFG.appName)} · Version ${esc(CFG.version)}</div>
     </main>${bottomNav('')}`;
 
@@ -3517,16 +3517,130 @@
     return `<details class="stats-data-basis"><summary>Datenbasis · Ernährung an ${tracked} von ${total} Tagen erfasst</summary><div class="stats-data-grid">${rows}</div></details>`;
   }
 
-  function statsOverview(days) {
+  function statsDayEnd(dateISO) {
+    const [y, m, d] = dateISO.split('-').map(Number);
+    return new Date(y, m - 1, d + 1, 0, 0, 0, 0);
+  }
+
+  function statsDayStart(dateISO) {
+    const [y, m, d] = dateISO.split('-').map(Number);
+    return new Date(y, m - 1, d, 0, 0, 0, 0);
+  }
+
+  function statsDurationCompact(minutes) {
+    const whole = Math.max(0, Math.round(Number(minutes) || 0));
+    const h = Math.floor(whole / 60);
+    const m = whole % 60;
+    if (h && m) return `${h}:${String(m).padStart(2, '0')} h`;
+    if (h) return `${h} h`;
+    return `${m} min`;
+  }
+
+  function statsPlanActiveOnDay(dateISO, now = new Date()) {
+    const dayStart = statsDayStart(dateISO);
+    const dayEnd = statsDayEnd(dateISO);
+    if (dayStart.getTime() > now.getTime()) return false;
+    return state.fastPlans.some(plan => {
+      const activeFrom = new Date(plan.activeFrom);
+      return !Number.isNaN(activeFrom.getTime()) && activeFrom.getTime() < dayEnd.getTime() && activeFrom.getTime() <= now.getTime();
+    });
+  }
+
+  function statsFastingData(range = statsPeriodRange()) {
+    const now = new Date();
+    synchronizeFastingSessions(now);
+    const dates = statsDatesBetween(range.start, range.end);
+    const sessions = state.fastingSessions
+      .filter(session => !session.deleted)
+      .filter(session => {
+        const start = new Date(session.startAt);
+        if (Number.isNaN(start.getTime()) || start.getTime() > now.getTime()) return false;
+        if (session.endAt && new Date(session.endAt).getTime() > now.getTime()) return false;
+        return true;
+      });
+    const dayMap = new Map(fastingHistoryDays(sessions, now).map(day => [day.key, day]));
+    const days = dates.map(date => {
+      const raw = dayMap.get(date);
+      const hasData = statsPlanActiveOnDay(date, now) || Boolean(raw);
+      const segments = raw?.segments || [];
+      const targets = [...new Set(segments.map(segment => Number(segment.targetMinutes || 0)).filter(value => value > 0))];
+      let targetMinutes = targets.length === 1 ? targets[0] : null;
+      if (!targetMinutes && targets.length === 0 && hasData) {
+        const at = new Date(Math.min(statsDayEnd(date).getTime() - 1, now.getTime()));
+        const plan = planEffectiveAt(at);
+        if (plan) targetMinutes = Number(plan.fastingMinutes || 0) || null;
+      }
+      return {
+        date,
+        hasData,
+        segments,
+        totalMinutes: raw?.totalMinutes || 0,
+        targetMinutes,
+        variedTargets: targets.length > 1,
+        running: segments.some(segment => segment.running)
+      };
+    });
+
+    const rangeStart = statsDayStart(range.start);
+    const rangeEnd = statsDayEnd(range.end);
+    const touchingSessions = sessions.filter(session => {
+      const start = new Date(session.startAt);
+      const end = new Date(session.endAt || now);
+      return start.getTime() < rangeEnd.getTime() && end.getTime() > rangeStart.getTime();
+    }).sort((a, b) => new Date(b.startAt) - new Date(a.startAt));
+    const completedSessions = touchingSessions.filter(session => session.endAt);
+    const runningSessions = touchingSessions.filter(session => !session.endAt);
+    return { range, days, completedSessions, runningSessions, now };
+  }
+
+  function statsEligibleFastingDays(days) {
+    const today = todayISO();
+    return days.filter(day => day.hasData && (state.statsIncludeToday || day.date !== today));
+  }
+
+  function statsAverageFastingDay(days) {
+    const eligible = statsEligibleFastingDays(days);
+    if (!eligible.length) return { value: null, count: 0 };
+    return { value: eligible.reduce((sum, day) => sum + day.totalMinutes, 0) / eligible.length, count: eligible.length };
+  }
+
+  function statsEligibleCompletedSessions(data) {
+    if (state.statsIncludeToday) return data.completedSessions;
+    const today = todayISO();
+    return data.completedSessions.filter(session => localDayKey(new Date(session.endAt)) !== today);
+  }
+
+  function statsFastingSessionMetrics(data) {
+    const sessions = statsEligibleCompletedSessions(data);
+    const durations = sessions.map(fastingDurationMinutes).filter(value => value > 0);
+    if (!durations.length) return { count: 0, average: null, longest: null, shortest: null };
+    return {
+      count: durations.length,
+      average: durations.reduce((sum, value) => sum + value, 0) / durations.length,
+      longest: Math.max(...durations),
+      shortest: Math.min(...durations)
+    };
+  }
+
+  function statsFastingAverageCard(data) {
+    const avg = statsAverageFastingDay(data.days);
+    const tracked = data.days.filter(day => day.hasData).length;
+    return `<article class="stats-kpi-card fasting"><span class="stats-kpi-icon">${icon('moon')}</span><div><small>Ø Fastenzeit pro Tag</small><strong>${avg.value == null ? '–' : durationText(Math.round(avg.value))}</strong><span>${avg.count} ${avg.count === 1 ? 'geeigneter Tag' : 'geeignete Tage'} · ${tracked} Fastentage</span></div></article>`;
+  }
+
+  function statsOverview(days, fastingData) {
     return `<section class="stats-overview">
-      <div class="stats-kpi-grid">
+      <div class="stats-kpi-grid stats-kpi-grid-four">
         ${statsAverageCard('calories', days)}
         ${statsAverageCard('protein', days)}
         ${statsAverageCard('fiber', days)}
+        ${statsFastingAverageCard(fastingData)}
       </div>
       ${statsDataBasis(days)}
-      <div class="stats-next-grid">
-        <article class="stats-coming-card"><span>${icon('moon')}</span><div><strong>Fastenauswertung</strong><small>Fastenzeit pro Kalendertag und Fastenphasen folgen in v0.5.2.</small></div></article>
+      <div class="stats-fast-summary-inline">
+        <span>${icon('moon')}</span><div><strong>Fastenauswertung ist aktiv</strong><small>Kalendertägliche Fastenzeit und zusammenhängende Fastenphasen findest du im Bereich „Fasten“.</small></div>
+      </div>
+      <div class="stats-next-grid stats-next-grid-single">
         <article class="stats-coming-card"><span>${icon('clock')}</span><div><strong>Rhythmus</strong><small>Erste und letzte Mahlzeit sowie Essensfenster folgen in v0.5.3.</small></div></article>
       </div>
     </section>`;
@@ -3552,19 +3666,92 @@
     </section>`;
   }
 
+  function statsFastingChart(data) {
+    const days = data.days;
+    const maxMinutes = 1440;
+    return `<section class="stats-chart-card stats-fasting-chart-card">
+      <div class="stats-chart-head"><div><small>Kalendertage</small><h3>Fastenzeit pro Tag</h3></div><span class="stats-target-note">0–24 h</span></div>
+      <div class="stats-bar-chart fasting ${days.length > 14 ? 'dense' : ''}" role="img" aria-label="Fastenzeit pro Kalendertag">
+        ${days.map(day => {
+          const pct = day.hasData ? Math.min(100, Math.max(day.totalMinutes > 0 ? 2 : 0, day.totalMinutes / maxMinutes * 100)) : 0;
+          const targetPct = day.targetMinutes ? Math.min(100, day.targetMinutes / maxMinutes * 100) : null;
+          const title = day.hasData
+            ? `${statsDayLabel(day.date)}: ${durationText(Math.round(day.totalMinutes))}${day.running ? ' · läuft' : ''}${day.targetMinutes ? ` · Ziel ${durationText(day.targetMinutes)}` : day.variedTargets ? ' · verschiedene Ziele' : ''}`
+            : `${statsDayLabel(day.date)}: keine Fastendaten`;
+          return `<button class="stats-bar-cell ${day.hasData ? '' : 'no-data'} ${day.running ? 'running' : ''}" data-stats-fast-day="${day.date}" ${day.hasData ? '' : 'disabled'} title="${esc(title)}">
+            <span class="stats-bar-value">${day.hasData ? `${statsDurationCompact(day.totalMinutes)}${day.running ? '•' : ''}` : '–'}</span>
+            <span class="stats-bar-track">${targetPct != null ? `<i class="stats-target-line fasting-target" style="bottom:${targetPct.toFixed(2)}%"></i>` : ''}<span class="stats-bar-fill" style="height:${pct.toFixed(2)}%"></span></span>
+            <span class="stats-bar-label">${statsDayLabel(day.date, true)}</span>
+          </button>`;
+        }).join('')}
+      </div>
+      <p class="stats-chart-help">Die kleine Referenzmarke zeigt das damalige Fastenziel. • kennzeichnet eine aktuell laufende Fastenzeit. Tage vor Einrichtung des Fastenplans erscheinen als keine Daten.</p>
+    </section>`;
+  }
+
+  function statsFastingSessionCard(session, now = new Date()) {
+    const start = new Date(session.startAt);
+    const end = session.endAt ? new Date(session.endAt) : now;
+    const minutes = Math.max(0, (end - start) / 60000);
+    const startLabel = new Intl.DateTimeFormat('de-DE', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }).format(start);
+    const endLabel = session.endAt
+      ? new Intl.DateTimeFormat('de-DE', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }).format(end)
+      : 'läuft';
+    return `<article class="stats-fast-session ${session.endAt ? '' : 'running'}">
+      <span class="stats-fast-session-icon">${icon('moon')}</span>
+      <div class="stats-fast-session-main"><strong>${esc(startLabel)} → ${esc(endLabel)}</strong><small>${session.endAt ? 'Zusammenhängende Fastenphase' : 'Aktuell laufende Fastenphase'}</small></div>
+      <div class="stats-fast-session-values"><strong>${durationText(Math.round(minutes))}</strong><small>Ziel ${session.targetMinutes ? durationText(session.targetMinutes) : '–'}</small></div>
+    </article>`;
+  }
+
+  function statsFastingDataBasis(data) {
+    const withData = data.days.filter(day => day.hasData).length;
+    const total = data.days.length;
+    const completed = data.completedSessions.length;
+    return `<details class="stats-data-basis"><summary>Datenbasis · Fastendaten an ${withData} von ${total} Tagen</summary><div class="stats-data-grid">
+      <div><span>Kalendertage mit Fastenplan/-daten</span><strong>${withData} von ${total}</strong></div>
+      <div><span>Abgeschlossene Fastenphasen im Zeitraum</span><strong>${completed}</strong></div>
+      <div><span>Laufende Fastenphase</span><strong>${data.runningSessions.length ? 'ja · nur bis jetzt gerechnet' : 'nein'}</strong></div>
+      <div><span>Durchschnitt heute</span><strong>${state.statsIncludeToday ? 'einbezogen' : 'ausgeschlossen'}</strong></div>
+    </div></details>`;
+  }
+
+  function statsFastingView(data) {
+    if (!state.fastPlans.length) {
+      return `<section class="stats-coming-large"><div>${icon('moon')}</div><h2>Noch kein Fastenplan</h2><p>Richte zuerst im Bereich „Fasten“ einen Plan ein. Danach kann Mampfo deine Fastenzeiten über Tage und Phasen auswerten.</p><button class="primary-button stats-open-fasting" id="stats-open-fasting">Fasten einrichten</button></section>`;
+    }
+    const daily = statsAverageFastingDay(data.days);
+    const phases = statsFastingSessionMetrics(data);
+    const sessionList = [...data.runningSessions, ...data.completedSessions].sort((a, b) => new Date(b.startAt) - new Date(a.startAt));
+    return `<section class="stats-fasting-view">
+      <div class="stats-kpi-grid stats-fast-kpi-grid">
+        <article class="stats-kpi-card fasting"><span class="stats-kpi-icon">${icon('moon')}</span><div><small>Ø Fastenzeit pro Tag</small><strong>${daily.value == null ? '–' : durationText(Math.round(daily.value))}</strong><span>${daily.count} ${daily.count === 1 ? 'Kalendertag' : 'Kalendertage'}</span></div></article>
+        <article class="stats-kpi-card fasting-phase"><span class="stats-kpi-icon">${icon('clock')}</span><div><small>Ø Fastenphase</small><strong>${phases.average == null ? '–' : durationText(Math.round(phases.average))}</strong><span>${phases.count} abgeschlossene ${phases.count === 1 ? 'Phase' : 'Phasen'}</span></div></article>
+        <article class="stats-kpi-card fasting-long"><span class="stats-kpi-icon">↗</span><div><small>Längste Phase</small><strong>${phases.longest == null ? '–' : durationText(Math.round(phases.longest))}</strong><span>zusammenhängend</span></div></article>
+        <article class="stats-kpi-card fasting-short"><span class="stats-kpi-icon">↘</span><div><small>Kürzeste Phase</small><strong>${phases.shortest == null ? '–' : durationText(Math.round(phases.shortest))}</strong><span>zusammenhängend</span></div></article>
+      </div>
+      ${statsFastingChart(data)}
+      <section class="stats-fast-sessions-card">
+        <div class="stats-chart-head"><div><small>Zusammenhängende Sessions</small><h3>Fastenphasen</h3></div><span class="stats-target-note">${phases.count} abgeschlossen</span></div>
+        ${sessionList.length ? `<div class="stats-fast-session-list">${sessionList.map(session => statsFastingSessionCard(session, data.now)).join('')}</div>` : `<div class="stats-fast-empty">Noch keine Fastenphasen im gewählten Zeitraum.</div>`}
+      </section>
+      ${statsFastingDataBasis(data)}
+    </section>`;
+  }
+
   function statsComingView(type) {
-    const fasting = type === 'fasting';
-    return `<section class="stats-coming-large"><div>${fasting ? icon('moon') : icon('clock')}</div><h2>${fasting ? 'Fastenauswertung' : 'Rhythmus'}</h2><p>${fasting ? 'Fastenzeit pro Kalendertag, Phasendauer und historische Ziele folgen mit v0.5.2.' : 'Erste und letzte Mahlzeit sowie das tatsächliche Essensfenster folgen mit v0.5.3.'}</p></section>`;
+    return `<section class="stats-coming-large"><div>${icon('clock')}</div><h2>Rhythmus</h2><p>Erste und letzte Mahlzeit sowie das tatsächliche Essensfenster folgen mit v0.5.3.</p></section>`;
   }
 
   function renderStats() {
-    const data = statsNutritionData();
+    const nutrition = statsNutritionData();
+    const fasting = statsFastingData(nutrition.range);
     app.innerHTML = `<main class="page stats-page">
       <header class="topbar"><div><div class="brand-kicker">${esc(CFG.appName)}</div><h1>Auswertung</h1></div><button class="icon-button" data-nav="settings" aria-label="Einstellungen">${icon('settings')}</button></header>
       ${statsTabBar()}
-      ${statsPeriodControls(data.range)}
+      ${statsPeriodControls(nutrition.range)}
       <div class="stats-content">
-        ${state.statsTab === 'overview' ? statsOverview(data.days) : state.statsTab === 'nutrition' ? statsNutritionView(data.days) : statsComingView(state.statsTab)}
+        ${state.statsTab === 'overview' ? statsOverview(nutrition.days, fasting) : state.statsTab === 'nutrition' ? statsNutritionView(nutrition.days) : state.statsTab === 'fasting' ? statsFastingView(fasting) : statsComingView(state.statsTab)}
       </div>
     </main>${bottomNav('stats')}`;
     bindStats();
@@ -3588,6 +3775,8 @@
       render();
     });
     document.querySelectorAll('[data-stats-day]').forEach(btn => btn.onclick = () => showStatsDayDetail(btn.dataset.statsDay));
+    document.querySelectorAll('[data-stats-fast-day]').forEach(btn => btn.onclick = () => showStatsFastingDayDetail(btn.dataset.statsFastDay));
+    document.getElementById('stats-open-fasting')?.addEventListener('click', () => { state.fastingTab = 'plan'; setView('fasting'); });
   }
 
   function showStatsDayDetail(date) {
@@ -3606,6 +3795,25 @@
     </div></div>`;
     document.getElementById('stats-close-day').onclick = () => { modalRoot.innerHTML = ''; };
     document.getElementById('stats-open-day').onclick = () => { modalRoot.innerHTML = ''; state.selectedDate = date; setView('today'); };
+  }
+
+  function showStatsFastingDayDetail(date) {
+    const data = statsFastingData();
+    const day = data.days.find(item => item.date === date);
+    if (!day?.hasData) return;
+    const segments = day.segments.length
+      ? day.segments.map(segment => `<div class="stats-fast-day-segment"><span>${icon('moon')} ${fastingSegmentClock(segment, 'start')} – ${fastingSegmentClock(segment, 'end')}</span><strong>${durationText(Math.round(segment.minutes))}${segment.running ? ' · läuft' : ''}</strong></div>`).join('')
+      : `<div class="stats-fast-day-segment"><span>Keine gespeicherte Fastenzeit</span><strong>0 min</strong></div>`;
+    const target = day.variedTargets ? 'verschiedene Ziele' : day.targetMinutes ? durationText(day.targetMinutes) : '–';
+    modalRoot.innerHTML = `<div class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="stats-fast-day-title"><div class="modal stats-day-modal">
+      <h2 id="stats-fast-day-title">${esc(displayDate(date))}</h2>
+      <p>Fastenzeit dieses Kalendertages${date === todayISO() ? ' · laufender Tag' : ''}</p>
+      <div class="stats-fast-day-total"><small>Gesamt</small><strong>${durationText(Math.round(day.totalMinutes))}</strong><span>Ziel: ${esc(target)}</span></div>
+      <div class="stats-fast-day-segments">${segments}</div>
+      <div class="modal-actions"><button class="primary-button" id="stats-open-fast-history">Fastenverlauf öffnen</button><button class="secondary-button" id="stats-close-fast-day">Schließen</button></div>
+    </div></div>`;
+    document.getElementById('stats-close-fast-day').onclick = () => { modalRoot.innerHTML = ''; };
+    document.getElementById('stats-open-fast-history').onclick = () => { modalRoot.innerHTML = ''; state.fastingTab = 'history'; setView('fasting'); };
   }
 
   function renderPlaceholder(view) {
