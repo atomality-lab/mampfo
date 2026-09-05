@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const CFG = window.APP_CONFIG || { appName: 'Mampfo', version: '0.4.3' };
+  const CFG = window.APP_CONFIG || { appName: 'Mampfo', version: '0.5.1' };
   const STORAGE = {
     settings: 'mampfo.settings.v2',
     entries: 'mampfo.entries.v2',
@@ -156,6 +156,11 @@
     recipeEditorMode: null,
     fastingTab: 'timer',
     fastingPlanEditing: false,
+    statsTab: 'overview',
+    statsPeriod: '7d',
+    statsIncludeToday: false,
+    statsCustomStart: offsetDate(todayISO(), -6),
+    statsCustomEnd: todayISO(),
     settings: load(STORAGE.settings, { dailyCalories: 1700, dailyProtein: 80 }),
     entries: load(STORAGE.entries, []),
     savedFoods: load(STORAGE.foods, []),
@@ -480,7 +485,7 @@
     else if (state.view === 'recipeDetail') renderRecipeDetail();
     else if (state.view === 'recipeLog') renderRecipeLog();
     else if (state.view === 'fasting') renderFasting();
-    else if (state.view === 'stats') renderPlaceholder(state.view);
+    else if (state.view === 'stats') renderStats();
     else renderToday();
     bindCommon();
   }
@@ -1510,7 +1515,7 @@
         <span class="chev">›</span>
       </button>
 
-      <div class="settings-note">${icon('rocket')}<br>Rezepte, Fastentimer und Fastenverlauf sind verfügbar. Die Auswertung folgt in einer späteren Version.</div>
+      <div class="settings-note">${icon('rocket')}<br>Rezepte, Fastentimer, Fastenverlauf und Ernährungsauswertung sind verfügbar. Fasten- und Rhythmusauswertungen folgen in v0.5.2 und v0.5.3.</div>
       <div class="version">${esc(CFG.appName)} · Version ${esc(CFG.version)}</div>
     </main>${bottomNav('')}`;
 
@@ -3350,6 +3355,259 @@
     renderFasting(); bindCommon();
   }
 
+  function statsDateISO(date) {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  }
+
+  function statsMonthStart(iso) {
+    const [y, m] = iso.split('-').map(Number);
+    return `${y}-${String(m).padStart(2, '0')}-01`;
+  }
+
+  function statsPreviousMonthRange() {
+    const [y, m] = todayISO().split('-').map(Number);
+    const end = new Date(y, m - 1, 0);
+    const start = new Date(end.getFullYear(), end.getMonth(), 1);
+    return { start: statsDateISO(start), end: statsDateISO(end), label: 'Letzter Monat' };
+  }
+
+  function statsPeriodRange() {
+    const today = todayISO();
+    if (state.statsPeriod === '30d') return { start: offsetDate(today, -29), end: today, label: 'Letzte 30 Tage' };
+    if (state.statsPeriod === 'month') return { start: statsMonthStart(today), end: today, label: 'Dieser Monat' };
+    if (state.statsPeriod === 'prevMonth') return statsPreviousMonthRange();
+    if (state.statsPeriod === 'custom') {
+      let start = state.statsCustomStart || offsetDate(today, -6);
+      let end = state.statsCustomEnd || today;
+      if (start > end) [start, end] = [end, start];
+      if (end > today) end = today;
+      return { start, end, label: `${shortDate(start)} – ${shortDate(end)}` };
+    }
+    return { start: offsetDate(today, -6), end: today, label: 'Letzte 7 Tage' };
+  }
+
+  function statsDatesBetween(start, end) {
+    const result = [];
+    let cur = start;
+    let guard = 0;
+    while (cur <= end && guard < 400) {
+      result.push(cur);
+      cur = offsetDate(cur, 1);
+      guard += 1;
+    }
+    return result;
+  }
+
+  function statsNutritionDay(date) {
+    const entries = dailyEntries(date);
+    const keys = ['calories', 'protein', 'fiber', 'fat', 'carbohydrates'];
+    const totals = Object.fromEntries(keys.map(key => [key, 0]));
+    const complete = Object.fromEntries(keys.map(key => [key, entries.length > 0]));
+    entries.forEach(entry => {
+      keys.forEach(key => {
+        if (entry[key] == null || entry[key] === '') complete[key] = false;
+        else totals[key] += Number(entry[key]) || 0;
+      });
+    });
+    return { date, entries, hasData: entries.length > 0, totals, complete };
+  }
+
+  function statsNutritionData() {
+    const range = statsPeriodRange();
+    const dates = statsDatesBetween(range.start, range.end);
+    return { range, days: dates.map(statsNutritionDay) };
+  }
+
+  function statsEligibleDays(days, key) {
+    const today = todayISO();
+    return days.filter(day => day.hasData && day.complete[key] && (state.statsIncludeToday || day.date !== today));
+  }
+
+  function statsAverage(days, key) {
+    const eligible = statsEligibleDays(days, key);
+    if (!eligible.length) return { value: null, count: 0 };
+    return { value: eligible.reduce((sum, day) => sum + day.totals[key], 0) / eligible.length, count: eligible.length };
+  }
+
+  function statsMetricConfig(key) {
+    return {
+      calories: { label: 'Kalorien', unit: 'kcal', icon: 'flame', cls: 'calories', digits: 0, target: Number(state.settings.dailyCalories || 0) || null },
+      protein: { label: 'Protein', unit: 'g', icon: 'protein', cls: 'protein', digits: 1, target: Number(state.settings.dailyProtein || 0) || null },
+      fiber: { label: 'Ballaststoffe', unit: 'g', icon: 'leaf', cls: 'fiber', digits: 1, target: null },
+      fat: { label: 'Fett', unit: 'g', icon: 'drop', cls: 'fat', digits: 1, target: null },
+      carbohydrates: { label: 'Kohlenhydrate', unit: 'g', icon: 'carbs', cls: 'carbs', digits: 1, target: null }
+    }[key];
+  }
+
+  function statsAverageCard(key, days) {
+    const cfg = statsMetricConfig(key);
+    const avg = statsAverage(days, key);
+    const totalTracked = days.filter(day => day.hasData).length;
+    const value = avg.value == null ? '–' : fmt(avg.value, cfg.digits);
+    return `<article class="stats-kpi-card ${cfg.cls}">
+      <span class="stats-kpi-icon">${icon(cfg.icon)}</span>
+      <div><small>Ø ${cfg.label}</small><strong>${value}${avg.value == null ? '' : ` ${cfg.unit}`}</strong><span>${avg.count} ${avg.count === 1 ? 'geeigneter Tag' : 'geeignete Tage'} · ${totalTracked} Ernährungstage</span></div>
+    </article>`;
+  }
+
+  function statsPeriodControls(range) {
+    const includesToday = range.start <= todayISO() && range.end >= todayISO();
+    const presets = [
+      ['7d', '7 Tage'], ['30d', '30 Tage'], ['month', 'Dieser Monat'], ['prevMonth', 'Letzter Monat'], ['custom', 'Eigener Zeitraum']
+    ];
+    return `<section class="stats-period-panel">
+      <div class="stats-period-pills" role="group" aria-label="Zeitraum">
+        ${presets.map(([value, label]) => `<button class="stats-period-pill ${state.statsPeriod === value ? 'active' : ''}" data-stats-period="${value}">${label}</button>`).join('')}
+      </div>
+      ${state.statsPeriod === 'custom' ? `<div class="stats-custom-range">
+        <label><span>Von</span><input type="date" id="stats-custom-start" value="${esc(state.statsCustomStart)}" max="${todayISO()}"></label>
+        <label><span>Bis</span><input type="date" id="stats-custom-end" value="${esc(state.statsCustomEnd)}" max="${todayISO()}"></label>
+        <button class="secondary-button stats-apply-range" id="stats-apply-custom">Anwenden</button>
+      </div>` : ''}
+      <div class="stats-period-meta"><strong>${esc(range.label)}</strong>${includesToday ? `<label class="stats-today-toggle"><input type="checkbox" id="stats-include-today" ${state.statsIncludeToday ? 'checked' : ''}><span>Heute in Durchschnitt einbeziehen</span></label>` : ''}</div>
+    </section>`;
+  }
+
+  function statsTabBar() {
+    return `<div class="stats-tabs" role="tablist" aria-label="Auswertung">
+      ${[['overview','Übersicht'],['nutrition','Ernährung'],['fasting','Fasten'],['rhythm','Rhythmus']].map(([key,label]) => `<button class="stats-tab ${state.statsTab === key ? 'active' : ''}" data-stats-tab="${key}" role="tab">${label}</button>`).join('')}
+    </div>`;
+  }
+
+  function statsDayLabel(iso, compact = false) {
+    const [y, m, d] = iso.split('-').map(Number);
+    const date = new Date(y, m - 1, d);
+    if (compact) return new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit' }).format(date);
+    return new Intl.DateTimeFormat('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' }).format(date);
+  }
+
+  function statsNutrientChart(key, days) {
+    const cfg = statsMetricConfig(key);
+    const numeric = days.filter(day => day.hasData).map(day => day.totals[key]);
+    const maxData = numeric.length ? Math.max(...numeric) : 0;
+    const maxValue = Math.max(maxData, cfg.target || 0, 1) * 1.08;
+    const targetPct = cfg.target ? Math.min(100, (cfg.target / maxValue) * 100) : null;
+    return `<section class="stats-chart-card">
+      <div class="stats-chart-head"><div><small>Tageswerte</small><h3>${cfg.label}</h3></div>${cfg.target ? `<span class="stats-target-note">Ziel ${fmt(cfg.target, cfg.digits)} ${cfg.unit}</span>` : ''}</div>
+      <div class="stats-bar-chart ${cfg.cls} ${days.length > 14 ? 'dense' : ''}" role="img" aria-label="${cfg.label} pro Tag">
+        ${days.map(day => {
+          const has = day.hasData;
+          const complete = day.complete[key];
+          const value = day.totals[key];
+          const pct = has ? Math.max(value > 0 ? 2 : 0, Math.min(100, (value / maxValue) * 100)) : 0;
+          return `<button class="stats-bar-cell ${has ? '' : 'no-data'} ${complete ? '' : 'partial'}" data-stats-day="${day.date}" ${has ? '' : 'disabled'} title="${has ? `${statsDayLabel(day.date)}: ${fmt(value, cfg.digits)} ${cfg.unit}${complete ? '' : ' · teilweise erfasst'}` : `${statsDayLabel(day.date)}: keine Daten`}">
+            <span class="stats-bar-value">${has ? `${fmt(value, cfg.digits)}${complete ? '' : '○'}` : '–'}</span>
+            <span class="stats-bar-track">${targetPct != null ? `<i class="stats-target-line" style="bottom:${targetPct.toFixed(2)}%"></i>` : ''}<span class="stats-bar-fill" style="height:${pct.toFixed(2)}%"></span></span>
+            <span class="stats-bar-label">${statsDayLabel(day.date, true)}</span>
+          </button>`;
+        }).join('')}
+      </div>
+      ${days.some(day => day.hasData && !day.complete[key]) ? `<p class="stats-chart-help">○ teilweise erfasst: Mindestens ein Eintrag des Tages enthält keinen Wert für ${cfg.label}.</p>` : ''}
+    </section>`;
+  }
+
+  function statsDataBasis(days) {
+    const tracked = days.filter(day => day.hasData).length;
+    const total = days.length;
+    const rows = ['calories','protein','fiber','fat','carbohydrates'].map(key => {
+      const cfg = statsMetricConfig(key);
+      const complete = days.filter(day => day.hasData && day.complete[key]).length;
+      return `<div><span>${cfg.label}</span><strong>${complete} von ${total} Tagen vollständig</strong></div>`;
+    }).join('');
+    return `<details class="stats-data-basis"><summary>Datenbasis · Ernährung an ${tracked} von ${total} Tagen erfasst</summary><div class="stats-data-grid">${rows}</div></details>`;
+  }
+
+  function statsOverview(days) {
+    return `<section class="stats-overview">
+      <div class="stats-kpi-grid">
+        ${statsAverageCard('calories', days)}
+        ${statsAverageCard('protein', days)}
+        ${statsAverageCard('fiber', days)}
+      </div>
+      ${statsDataBasis(days)}
+      <div class="stats-next-grid">
+        <article class="stats-coming-card"><span>${icon('moon')}</span><div><strong>Fastenauswertung</strong><small>Fastenzeit pro Kalendertag und Fastenphasen folgen in v0.5.2.</small></div></article>
+        <article class="stats-coming-card"><span>${icon('clock')}</span><div><strong>Rhythmus</strong><small>Erste und letzte Mahlzeit sowie Essensfenster folgen in v0.5.3.</small></div></article>
+      </div>
+    </section>`;
+  }
+
+  function statsNutritionView(days) {
+    return `<section class="stats-nutrition-view">
+      <div class="stats-kpi-grid stats-kpi-grid-five">
+        ${statsAverageCard('calories', days)}
+        ${statsAverageCard('protein', days)}
+        ${statsAverageCard('fiber', days)}
+        ${statsAverageCard('fat', days)}
+        ${statsAverageCard('carbohydrates', days)}
+      </div>
+      ${statsNutrientChart('calories', days)}
+      ${statsNutrientChart('protein', days)}
+      ${statsNutrientChart('fiber', days)}
+      <details class="stats-more-charts"><summary>Weitere Nährwerte</summary>
+        ${statsNutrientChart('fat', days)}
+        ${statsNutrientChart('carbohydrates', days)}
+      </details>
+      ${statsDataBasis(days)}
+    </section>`;
+  }
+
+  function statsComingView(type) {
+    const fasting = type === 'fasting';
+    return `<section class="stats-coming-large"><div>${fasting ? icon('moon') : icon('clock')}</div><h2>${fasting ? 'Fastenauswertung' : 'Rhythmus'}</h2><p>${fasting ? 'Fastenzeit pro Kalendertag, Phasendauer und historische Ziele folgen mit v0.5.2.' : 'Erste und letzte Mahlzeit sowie das tatsächliche Essensfenster folgen mit v0.5.3.'}</p></section>`;
+  }
+
+  function renderStats() {
+    const data = statsNutritionData();
+    app.innerHTML = `<main class="page stats-page">
+      <header class="topbar"><div><div class="brand-kicker">${esc(CFG.appName)}</div><h1>Auswertung</h1></div><button class="icon-button" data-nav="settings" aria-label="Einstellungen">${icon('settings')}</button></header>
+      ${statsTabBar()}
+      ${statsPeriodControls(data.range)}
+      <div class="stats-content">
+        ${state.statsTab === 'overview' ? statsOverview(data.days) : state.statsTab === 'nutrition' ? statsNutritionView(data.days) : statsComingView(state.statsTab)}
+      </div>
+    </main>${bottomNav('stats')}`;
+    bindStats();
+  }
+
+  function bindStats() {
+    document.querySelectorAll('[data-stats-tab]').forEach(btn => btn.onclick = () => { state.statsTab = btn.dataset.statsTab; render(); });
+    document.querySelectorAll('[data-stats-period]').forEach(btn => btn.onclick = () => {
+      state.statsPeriod = btn.dataset.statsPeriod;
+      if (state.statsPeriod !== 'custom') state.statsIncludeToday = false;
+      render();
+    });
+    document.getElementById('stats-include-today')?.addEventListener('change', e => { state.statsIncludeToday = e.target.checked; render(); });
+    document.getElementById('stats-apply-custom')?.addEventListener('click', () => {
+      const start = document.getElementById('stats-custom-start')?.value;
+      const end = document.getElementById('stats-custom-end')?.value;
+      if (!start || !end) return showToast('Bitte Start- und Enddatum wählen.');
+      if (start > todayISO()) return showToast('Der Zeitraum darf nicht vollständig in der Zukunft liegen.');
+      state.statsCustomStart = start;
+      state.statsCustomEnd = end > todayISO() ? todayISO() : end;
+      render();
+    });
+    document.querySelectorAll('[data-stats-day]').forEach(btn => btn.onclick = () => showStatsDayDetail(btn.dataset.statsDay));
+  }
+
+  function showStatsDayDetail(date) {
+    const day = statsNutritionDay(date);
+    if (!day.hasData) return;
+    const metricRow = key => {
+      const cfg = statsMetricConfig(key);
+      return `<div><span>${cfg.label}</span><strong>${fmt(day.totals[key], cfg.digits)} ${cfg.unit}${day.complete[key] ? '' : ' ○'}</strong></div>`;
+    };
+    modalRoot.innerHTML = `<div class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="stats-day-title"><div class="modal stats-day-modal">
+      <h2 id="stats-day-title">${esc(displayDate(date))}</h2>
+      <p>${day.entries.length} ${day.entries.length === 1 ? 'Ernährungseintrag' : 'Ernährungseinträge'}${date === todayISO() ? ' · laufender Tag' : ''}</p>
+      <div class="stats-day-detail-grid">${['calories','protein','fiber','fat','carbohydrates'].map(metricRow).join('')}</div>
+      ${Object.values(day.complete).some(v => !v) ? `<p class="stats-partial-note">○ Mindestens ein Nährwert ist an diesem Tag nur teilweise erfasst.</p>` : ''}
+      <div class="modal-actions"><button class="primary-button" id="stats-open-day">Tag öffnen</button><button class="secondary-button" id="stats-close-day">Schließen</button></div>
+    </div></div>`;
+    document.getElementById('stats-close-day').onclick = () => { modalRoot.innerHTML = ''; };
+    document.getElementById('stats-open-day').onclick = () => { modalRoot.innerHTML = ''; state.selectedDate = date; setView('today'); };
+  }
+
   function renderPlaceholder(view) {
     const data = {
       stats: ['▥', 'Auswertung', 'Wochen-, Monats- und Fastenauswertungen folgen in einer späteren Version.']
@@ -3364,6 +3622,7 @@
         if (view === 'today') state.selectedDate = state.selectedDate || todayISO();
         if (view === 'add') state.addTab = 'input';
         if (view === 'fasting') { state.fastingTab = 'timer'; state.fastingPlanEditing = false; }
+        if (view === 'stats' && !state.statsTab) state.statsTab = 'overview';
         setView(view, { editingId: null, editingFoodId: null, editingRecipeId: null, selectedRecipeId: null, selectedSavedFoodId: null, recipeLogOrigin: 'recipes' });
       };
     });

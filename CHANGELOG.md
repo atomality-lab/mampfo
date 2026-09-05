@@ -1,5 +1,29 @@
 # Changelog
 
+## v0.5.1 – Ernährungsauswertung
+
+### Neu
+- Hauptregister **Auswertung** aktiviert
+- Unterbereiche **Übersicht | Ernährung | Fasten | Rhythmus** ergänzt; Fasten und Rhythmus sind als kommende Ausbaustufen gekennzeichnet
+- Zeitraumsauswahl: 7 Tage, 30 Tage, dieser Monat, letzter Monat und eigener Zeitraum
+- heutiger laufender Tag kann gezielt in Durchschnittswerte ein- oder ausgeschlossen werden
+- Durchschnittswerte für Kalorien, Protein, Ballaststoffe, Fett und Kohlenhydrate
+- Tagesdiagramme für alle fünf Nährwerte ohne externe Diagrammbibliothek
+- persönliche Kalorien- und Proteinziele als neutrale Referenzlinien
+- antippbare Tageswerte mit Detailansicht und direktem Sprung zum Tagebuchtag
+- Datenbasis zeigt Erfassungs- und Vollständigkeitsgrad
+
+### Datenlogik
+- Tage ohne Ernährungseinträge werden als **keine Daten** behandelt, nicht als 0
+- fehlende Nährstoffwerte werden als **teilweise erfasst** gekennzeichnet
+- unvollständige Tage werden aus dem Durchschnitt des jeweiligen Nährstoffs ausgeschlossen
+- Statistikwerte werden immer live aus den vorhandenen Tagebucheinträgen berechnet; es werden keine separaten Statistik-Snapshots gespeichert
+
+### Bestehende Daten
+- Tagebuch, Lebensmittel, Rezepte, Fastenpläne und Fasten-Sessions bleiben unverändert
+- Datenmodell bleibt Version 4
+- Service-Worker-Cache auf v0.5.1 aktualisiert
+
 ## v0.4.3 – Ernährung und Fasten verknüpfen
 
 ### Neu

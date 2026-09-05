@@ -1,7 +1,51 @@
-# Mampfo v0.4.3
+# Mampfo v0.5.1
 
 Mampfo ist eine persönliche, lokal gespeicherte PWA zum Ernährungstracking.
 
+
+## Neu in v0.5.1 – Ernährungsauswertung
+
+Das Hauptregister **Auswertung** ist jetzt aktiviert. v0.5.1 konzentriert sich bewusst auf Ernährung; Fasten- und Rhythmusauswertungen folgen in v0.5.2 und v0.5.3.
+
+### Zeitraum
+
+Wählbar sind:
+
+- letzte 7 Tage
+- letzte 30 Tage
+- dieser Monat
+- letzter Monat
+- eigener Zeitraum
+
+Der aktuelle Tag bleibt sichtbar, wird standardmäßig aber nicht in Durchschnittswerte einbezogen. Über **Heute in Durchschnitt einbeziehen** kann dies bewusst geändert werden.
+
+### Ernährung
+
+Ausgewertet werden:
+
+- Kalorien
+- Protein
+- Ballaststoffe
+- Fett
+- Kohlenhydrate
+
+Mampfo zeigt Durchschnittswerte und Tagesdiagramme. Für Kalorien und Protein erscheinen die persönlichen Tagesziele als dezente Referenz. Ein Tipp auf einen erfassten Tagesbalken öffnet die Detailwerte und ermöglicht den direkten Sprung zum entsprechenden Tagebuchtag.
+
+### Datenqualität
+
+- Tage ohne Ernährungseinträge gelten als **keine Daten** und nicht als 0.
+- Fehlt bei mindestens einem Eintrag eines Tages ein bestimmter Nährstoff, wird dieser Tageswert als **teilweise erfasst** markiert.
+- Ein unvollständiger Tageswert wird für den Durchschnitt des betreffenden Nährstoffs nicht verwendet.
+- Die Datenbasis zeigt, an wie vielen Tagen Ernährung beziehungsweise einzelne Nährstoffe vollständig erfasst wurden.
+
+### Technik
+
+- keine externe Diagrammbibliothek
+- alle Auswertungen werden lokal aus den vorhandenen Tagebucheinträgen berechnet
+- keine separaten Statistik-Snapshots
+- bestehende Daten aus v0.4.3 bleiben unverändert
+- Datenmodell bleibt Version 4
+- Service-Worker-Cache: `mampfo-v0.5.1`
 
 ## Neu in v0.4.3 – Ernährung ↔ Fasten
 
