@@ -1513,3 +1513,49 @@ button { cursor: pointer; }
   .stats-rhythm-axis { padding-left:81px; padding-right:219px; }
   .stats-comparison-grid { grid-template-columns: 1fr 1fr; gap:1px; }
 }
+
+/* v0.6.1 – Mampfo Cloud / Supabase */
+.cloud-card {
+  border: 1px solid #d8e4e8;
+  border-radius: 20px;
+  background: linear-gradient(145deg, var(--bluegray-pale), rgba(255,255,255,.9));
+  padding: 15px;
+  box-shadow: 0 8px 22px rgba(58,67,59,.04);
+}
+.cloud-card.cloud-unconfigured { background: linear-gradient(145deg, #f7f2ea, rgba(255,255,255,.9)); border-color: #e7ddcf; }
+.cloud-card-head { display: grid; grid-template-columns: 52px 1fr; gap: 12px; align-items: center; }
+.cloud-card-head strong, .cloud-card-head small { display: block; }
+.cloud-card-head strong { font-size: .94rem; }
+.cloud-card-head small { margin-top: 3px; color: var(--text-3); font-size: .7rem; line-height: 1.4; }
+.cloud-icon { width: 52px; height: 52px; border-radius: 17px; display: grid; place-items: center; background: rgba(255,255,255,.88); color: #6d8795; font-size: 1.65rem; }
+.cloud-icon.connected { background: var(--sage-pale); color: var(--sage-dark); }
+.cloud-card p { margin: 12px 1px 0; color: var(--text-2); font-size: .74rem; line-height: 1.5; }
+.cloud-card code { font-size: .72rem; background: rgba(255,255,255,.75); padding: 1px 4px; border-radius: 5px; }
+.cloud-hint { margin-top: 12px; padding: 10px 11px; border-radius: 12px; background: rgba(255,255,255,.72); color: #6f6255; font-size: .7rem; line-height: 1.45; }
+.cloud-auth-form { display: grid; gap: 10px; margin-top: 14px; }
+.cloud-auth-form label { display: grid; gap: 5px; font-size: .7rem; font-weight: 760; color: var(--text-2); }
+.cloud-auth-form input { width: 100%; min-height: 44px; border: 1px solid #d6dcda; border-radius: 12px; background: white; color: var(--text); padding: 10px 11px; outline: 0; }
+.cloud-auth-form input:focus { border-color: var(--sage); box-shadow: 0 0 0 3px rgba(150,173,140,.16); }
+.cloud-actions { display: grid; gap: 8px; grid-template-columns: 1fr 1fr; margin-top: 3px; }
+.cloud-actions.stacked { grid-template-columns: 1fr; margin-top: 12px; }
+.cloud-actions .primary-button, .cloud-actions .secondary-button { min-height: 46px; font-size: .86rem; }
+.cloud-logout { min-height: 40px; border: 0; background: transparent; color: var(--text-3); font-weight: 760; }
+.cloud-status-line { display: flex; align-items: center; gap: 8px; margin-top: 14px; padding: 9px 10px; border-radius: 12px; background: rgba(255,255,255,.72); color: var(--text-2); font-size: .72rem; }
+.cloud-status-dot { width: 8px; height: 8px; flex: 0 0 8px; border-radius: 50%; background: var(--sage); }
+.cloud-counts { display: grid; grid-template-columns: repeat(2, 1fr); gap: 7px; margin-top: 11px; }
+.cloud-counts > div { padding: 9px 10px; border-radius: 12px; background: rgba(255,255,255,.72); }
+.cloud-counts span, .cloud-counts strong { display: block; }
+.cloud-counts span { color: var(--text-3); font-size: .62rem; }
+.cloud-counts strong { margin-top: 2px; font-size: .9rem; }
+.cloud-remote-summary { display: flex; justify-content: space-between; gap: 10px; align-items: center; margin-top: 8px; padding: 10px; border-radius: 12px; border: 1px dashed #cfdde2; background: rgba(255,255,255,.56); font-size: .68rem; }
+.cloud-remote-summary span { color: var(--text-3); }
+.cloud-remote-summary strong { text-align: right; font-size: .66rem; }
+.cloud-footnote { color: var(--text-3) !important; font-size: .67rem !important; }
+.cloud-blocked { opacity: .58; }
+.cloud-confirm-list { display: grid; gap: 1px; margin: 13px 0; overflow: hidden; border: 1px solid var(--line); border-radius: 13px; background: var(--line); }
+.cloud-confirm-list > div { display: flex; justify-content: space-between; gap: 12px; padding: 9px 11px; background: white; font-size: .75rem; }
+.cloud-confirm-list span { color: var(--text-2); }
+.cloud-warning { padding: 9px 10px; border-radius: 11px; background: var(--apricot-pale); color: #765f4c !important; font-size: .69rem !important; }
+@media (min-width: 620px) {
+  .cloud-counts { grid-template-columns: repeat(5, 1fr); }
+}

@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const CFG = window.APP_CONFIG || { appName: 'Mampfo', version: '0.5.2' };
+  const CFG = window.APP_CONFIG || { appName: 'Mampfo', version: '0.6.1' };
   const STORAGE = {
     settings: 'mampfo.settings.v2',
     entries: 'mampfo.entries.v2',
@@ -1498,6 +1498,180 @@
     };
   }
 
+  function cloudSettingsMarkup() {
+    const cloud = window.MampfoCloud;
+    if (!cloud || !cloud.isConfigured()) {
+      return `<section class="cloud-card cloud-unconfigured">
+        <div class="cloud-card-head"><span class="cloud-icon">☁</span><div><strong>Supabase noch nicht konfiguriert</strong><small>Project URL und Publishable Key fehlen noch.</small></div></div>
+        <p>Trage die Werte in <code>supabase-config.js</code> ein und führe vorher <code>SUPABASE_SETUP.sql</code> in deinem Supabase-Projekt aus.</p>
+        <div class="cloud-hint">Nur einen <strong>Publishable Key</strong> verwenden. Secret- oder service_role-Keys gehören niemals in die PWA.</div>
+      </section>`;
+    }
+
+    const user = cloud.currentUser();
+    if (!user) {
+      return `<section class="cloud-card">
+        <div class="cloud-card-head"><span class="cloud-icon">☁</span><div><strong>Mampfo Cloud</strong><small>Supabase ist konfiguriert · noch nicht angemeldet</small></div></div>
+        <form id="cloud-auth-form" class="cloud-auth-form">
+          <label><span>E-Mail</span><input id="cloud-email" type="email" autocomplete="email" required placeholder="name@beispiel.de"></label>
+          <label><span>Passwort</span><input id="cloud-password" type="password" autocomplete="current-password" minlength="6" required placeholder="mindestens 6 Zeichen"></label>
+          <div class="cloud-actions"><button type="submit" class="primary-button">Anmelden</button><button type="button" class="secondary-button" id="cloud-signup">Konto erstellen</button></div>
+        </form>
+        <p class="cloud-footnote">Deine bestehenden Mampfo-Daten bleiben weiterhin lokal gespeichert. Die Cloud wird erst nach einer zusätzlichen Bestätigung befüllt.</p>
+      </section>`;
+    }
+
+    const local = cloud.localCounts();
+    return `<section class="cloud-card">
+      <div class="cloud-card-head"><span class="cloud-icon connected">☁</span><div><strong>Mampfo Cloud</strong><small>Angemeldet als ${esc(user.email || 'Mampfo-Konto')}</small></div></div>
+      <div class="cloud-status-line"><span class="cloud-status-dot"></span><span id="cloud-status-text">Cloud-Status wird geprüft …</span></div>
+      <div class="cloud-counts local">
+        <div><span>Ernährung</span><strong>${local.entries}</strong></div>
+        <div><span>Lebensmittel</span><strong>${local.foods}</strong></div>
+        <div><span>Rezepte</span><strong>${local.recipes}</strong></div>
+        <div><span>Fastenpläne</span><strong>${local.fastPlans}</strong></div>
+        <div><span>Fastenphasen</span><strong>${local.fastingSessions}</strong></div>
+      </div>
+      <div id="cloud-remote-summary" class="cloud-remote-summary"><span>Cloud</span><strong>Prüfung läuft …</strong></div>
+      <div class="cloud-actions stacked">
+        <button type="button" class="secondary-button" id="cloud-check">↻ Cloud prüfen</button>
+        <button type="button" class="primary-button" id="cloud-initialize" disabled>Lokale Daten in Cloud übernehmen</button>
+        <button type="button" class="cloud-logout" id="cloud-logout">Abmelden</button>
+      </div>
+      <p class="cloud-footnote">v0.6.1 lädt nur in eine <strong>leere</strong> persönliche Cloud hoch. Bereits vorhandene Cloud-Daten werden nicht überschrieben oder zusammengeführt.</p>
+    </section>`;
+  }
+
+  function cloudCountsText(counts) {
+    return `${counts.entries} Ernährung · ${counts.foods} Lebensmittel · ${counts.recipes} Rezepte · ${counts.fastPlans} Pläne · ${counts.fastingSessions} Fastenphasen`;
+  }
+
+  async function refreshCloudStatus() {
+    const cloud = window.MampfoCloud;
+    const status = document.getElementById('cloud-status-text');
+    const summary = document.getElementById('cloud-remote-summary');
+    const init = document.getElementById('cloud-initialize');
+    if (!cloud || !status || !summary || !init) return;
+    status.textContent = 'Cloud-Status wird geprüft …';
+    init.disabled = true;
+    try {
+      const user = await cloud.getUser();
+      if (!user) {
+        showToast('Bitte erneut anmelden.');
+        render();
+        return;
+      }
+      const counts = await cloud.cloudCounts();
+      summary.innerHTML = `<span>Cloud</span><strong>${esc(cloudCountsText(counts))}</strong>`;
+      if (counts.isEmpty) {
+        status.textContent = 'Cloud ist leer · Erst-Upload möglich';
+        init.disabled = false;
+        init.classList.remove('cloud-blocked');
+      } else {
+        status.textContent = 'Cloud enthält bereits Mampfo-Daten';
+        init.disabled = true;
+        init.classList.add('cloud-blocked');
+      }
+    } catch (error) {
+      status.textContent = error.message || 'Cloud-Prüfung fehlgeschlagen.';
+      summary.innerHTML = '<span>Cloud</span><strong>nicht verfügbar</strong>';
+      init.disabled = true;
+    }
+  }
+
+  function confirmCloudInitialization() {
+    const cloud = window.MampfoCloud;
+    if (!cloud) return;
+    const counts = cloud.localCounts();
+    modalRoot.innerHTML = `<div class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="cloud-init-title"><div class="modal">
+      <h2 id="cloud-init-title">Mampfo Cloud initialisieren?</h2>
+      <p>Die lokalen Daten dieses Geräts werden als erster Cloud-Stand hochgeladen. Lokal wird nichts gelöscht oder ersetzt.</p>
+      <div class="cloud-confirm-list">
+        <div><span>Ernährungseinträge</span><strong>${counts.entries}</strong></div>
+        <div><span>Lebensmittel</span><strong>${counts.foods}</strong></div>
+        <div><span>Rezepte</span><strong>${counts.recipes}</strong></div>
+        <div><span>Fastenpläne</span><strong>${counts.fastPlans}</strong></div>
+        <div><span>Fastenphasen</span><strong>${counts.fastingSessions}</strong></div>
+      </div>
+      <p class="cloud-warning">Vor dem Upload prüft Mampfo die Cloud noch einmal. Ist sie nicht leer, wird der Vorgang abgebrochen.</p>
+      <div class="modal-actions"><button class="primary-button" id="confirm-cloud-init">Jetzt hochladen</button><button class="secondary-button" id="cancel-cloud-init">Abbrechen</button></div>
+    </div></div>`;
+    document.getElementById('cancel-cloud-init').onclick = () => { modalRoot.innerHTML = ''; };
+    document.getElementById('confirm-cloud-init').onclick = async () => {
+      const button = document.getElementById('confirm-cloud-init');
+      button.disabled = true;
+      button.textContent = 'Upload läuft …';
+      try {
+        const result = await cloud.initializeCloud(CFG.version);
+        modalRoot.innerHTML = '';
+        showToast('Mampfo Cloud wurde initialisiert.');
+        await refreshCloudStatus();
+      } catch (error) {
+        button.disabled = false;
+        button.textContent = 'Jetzt hochladen';
+        showToast(error.message || 'Cloud-Upload fehlgeschlagen.');
+      }
+    };
+  }
+
+  function bindCloudSettings() {
+    const cloud = window.MampfoCloud;
+    if (!cloud || !cloud.isConfigured()) return;
+
+    const authForm = document.getElementById('cloud-auth-form');
+    authForm?.addEventListener('submit', async e => {
+      e.preventDefault();
+      const email = document.getElementById('cloud-email').value.trim();
+      const password = document.getElementById('cloud-password').value;
+      if (!email || password.length < 6) return showToast('Bitte E-Mail und Passwort eingeben.');
+      const button = authForm.querySelector('button[type="submit"]');
+      button.disabled = true;
+      button.textContent = 'Anmeldung …';
+      try {
+        await cloud.signIn(email, password);
+        showToast('Angemeldet.');
+        render();
+      } catch (error) {
+        button.disabled = false;
+        button.textContent = 'Anmelden';
+        showToast(error.message || 'Anmeldung fehlgeschlagen.');
+      }
+    });
+
+    document.getElementById('cloud-signup')?.addEventListener('click', async () => {
+      const email = document.getElementById('cloud-email').value.trim();
+      const password = document.getElementById('cloud-password').value;
+      if (!email || password.length < 6) return showToast('Bitte E-Mail und mindestens 6 Zeichen Passwort eingeben.');
+      const button = document.getElementById('cloud-signup');
+      button.disabled = true;
+      button.textContent = 'Konto wird erstellt …';
+      try {
+        const result = await cloud.signUp(email, password);
+        if (result.session) {
+          showToast('Konto erstellt und angemeldet.');
+          render();
+        } else {
+          button.disabled = false;
+          button.textContent = 'Konto erstellen';
+          showToast('Konto erstellt. Bitte Bestätigungs-Mail öffnen und danach anmelden.');
+        }
+      } catch (error) {
+        button.disabled = false;
+        button.textContent = 'Konto erstellen';
+        showToast(error.message || 'Konto konnte nicht erstellt werden.');
+      }
+    });
+
+    document.getElementById('cloud-logout')?.addEventListener('click', async () => {
+      await cloud.signOut();
+      showToast('Von Mampfo Cloud abgemeldet.');
+      render();
+    });
+    document.getElementById('cloud-check')?.addEventListener('click', refreshCloudStatus);
+    document.getElementById('cloud-initialize')?.addEventListener('click', confirmCloudInitialization);
+    if (cloud.currentUser()) refreshCloudStatus();
+  }
+
   function renderSettings() {
     app.innerHTML = `<main class="page">
       <header class="topbar"><button class="icon-button" id="settings-back" aria-label="Zurück">${icon('back')}</button><h1>Einstellungen</h1><span style="width:44px"></span></header>
@@ -1515,7 +1689,10 @@
         <span class="chev">›</span>
       </button>
 
-      <div class="settings-note">${icon('rocket')}<br>Rezepte, Fastentimer, Fastenverlauf sowie Ernährungs- und Fastenauswertung sind verfügbar. Die Rhythmusauswertung folgt in v0.5.3.</div>
+      <div class="settings-title">☁ Datenaustausch</div>
+      ${cloudSettingsMarkup()}
+
+      <div class="settings-note">${icon('rocket')}<br>Ernährung, Rezepte, Fasten und die vollständige Auswertung sind verfügbar. v0.6.1 bereitet zusätzlich den sicheren Geräteabgleich über Supabase vor.</div>
       <div class="version">${esc(CFG.appName)} · Version ${esc(CFG.version)}</div>
     </main>${bottomNav('')}`;
 
@@ -1531,6 +1708,7 @@
       persist();
       showToast('Tagesziele gespeichert.');
     });
+    bindCloudSettings();
   }
 
   function renderAddFoods(target) {

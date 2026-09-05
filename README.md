@@ -1,7 +1,61 @@
-# Mampfo v0.5.3
+# Mampfo v0.6.1
 
-Mampfo ist eine persönliche, lokal gespeicherte PWA zum Ernährungstracking.
+Mampfo ist eine persönliche **Local-first-PWA** zum Ernährungstracking. Die App funktioniert weiterhin vollständig mit lokalen Daten; v0.6.1 ergänzt optional ein Supabase-Fundament für den späteren geräteübergreifenden Datenaustausch.
 
+## Neu in v0.6.1 – Mampfo Cloud: Fundament
+
+v0.6.1 führt noch **keine automatische Synchronisation** durch. Die Version schafft bewusst zuerst einen sicheren Ausgangspunkt.
+
+### Neu
+
+- neuer Bereich **Einstellungen → Datenaustausch**
+- Supabase-Anmeldung mit E-Mail und Passwort
+- neues Konto direkt in Mampfo anlegen
+- Anmeldesitzung lokal speichern und bei Bedarf über das Refresh-Token erneuern
+- lokalen Datenbestand und persönlichen Cloud-Bestand zählen/anzeigen
+- kontrollierter **Erst-Upload** des vorhandenen lokalen Mampfo-Bestands
+- Upload nur, wenn die persönliche Mampfo-Cloud leer ist
+- bereits vorhandene Cloud-Daten werden nicht überschrieben oder zusammengeführt
+- lokale Daten bleiben bei Upload-, Netzwerk- oder Loginfehlern unverändert
+
+### Cloud-Datenbereiche
+
+Der Erst-Upload umfasst:
+
+- Ernährungseinträge
+- gespeicherte Lebensmittel und Favoriten
+- Rezepte inklusive Zutaten-Snapshots
+- Fastenpläne
+- Fasten-Sessions
+- Tagesziele/Einstellungen
+
+Die Auswertungen selbst werden weiterhin live aus diesen Daten berechnet und nicht separat gespeichert.
+
+### Sicherheit
+
+Im Paket liegt `SUPABASE_SETUP.sql`. Das Skript aktiviert **Row Level Security (RLS)** auf allen Mampfo-Cloudtabellen und erlaubt angemeldeten Benutzern nur Zugriff auf ihre eigenen Zeilen. Im Browser wird ausschließlich ein **Publishable Key** verwendet. Secret- oder `service_role`-Keys dürfen niemals in Mampfo eingetragen werden.
+
+### Einrichtung
+
+Die vollständige Schritt-für-Schritt-Anleitung steht in **`SUPABASE_SETUP.md`**. Kurzfassung:
+
+1. eigenes Supabase-Projekt für Mampfo anlegen
+2. `SUPABASE_SETUP.sql` im SQL Editor ausführen
+3. Project URL und Publishable Key in `supabase-config.js` eintragen
+4. Dateien auf GitHub Pages veröffentlichen
+5. in Mampfo anmelden, Cloud prüfen und Erst-Upload bestätigen
+
+### Bewusste Grenze von v0.6.1
+
+Ein zweites Gerät, das sich nach dem Erst-Upload anmeldet, erkennt zwar den vorhandenen Cloud-Bestand, lädt ihn aber noch **nicht automatisch herunter**. Der sichere bidirektionale Merge folgt in **v0.6.2**.
+
+### Technik
+
+- bestehende LocalStorage-Schlüssel und Datenmodell Version 4 bleiben erhalten
+- neue Cloud-Session wird getrennt unter `mampfo.cloudSession.v1` gespeichert
+- eindeutige lokale Geräte-ID unter `mampfo.deviceId.v1`
+- keine externe JavaScript-Bibliothek erforderlich; Cloud-Zugriffe erfolgen über die Supabase Auth- und Data-API
+- Service-Worker-Cache: `mampfo-v0.6.1`
 
 ## Neu in v0.5.3 – Rhythmus & Gesamtübersicht
 

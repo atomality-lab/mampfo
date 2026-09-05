@@ -1,5 +1,32 @@
 # Changelog
 
+## v0.6.1 – Supabase-Grundgerüst und kontrollierter Erst-Upload
+
+### Neu
+- **Einstellungen → Datenaustausch** ergänzt
+- Supabase-Konfiguration über separate `supabase-config.js`
+- E-Mail-/Passwort-Konto erstellen, anmelden und abmelden
+- Session-Persistenz und Token-Erneuerung für Mampfo Cloud
+- Cloud-Status mit lokalen und entfernten Datenmengen
+- kontrollierter Erst-Upload für Ernährung, Lebensmittel, Rezepte, Fastenpläne, Fasten-Sessions und Einstellungen
+- Erst-Upload wird blockiert, sobald bereits persönliche Cloud-Daten vorhanden sind
+- lokale Daten werden beim Cloud-Upload nicht verändert
+- separates `SUPABASE_SETUP.sql` mit Tabellen, Grants und Row Level Security
+- `SUPABASE_SETUP.md` mit Einrichtungsanleitung ergänzt
+
+### Sicherheit und Datenlogik
+- RLS beschränkt jede Cloud-Tabelle auf `auth.uid() = user_id`
+- `anon` erhält keine Tabellenrechte; `authenticated` nur die benötigten CRUD-Rechte
+- Browser-Konfiguration ist für einen Supabase **Publishable Key** ausgelegt
+- Secret-/service_role-Keys werden nicht benötigt und dürfen nicht in die PWA
+- bestehende LocalStorage-Daten bleiben primäre Arbeitsgrundlage
+- noch kein bidirektionaler Merge; dieser folgt in v0.6.2
+
+### Technik
+- Datenmodell bleibt Version 4
+- neue lokale Schlüssel `mampfo.cloudSession.v1` und `mampfo.deviceId.v1`
+- Service-Worker-Cache auf v0.6.1 aktualisiert
+
 ## v0.5.3 – Rhythmus & Gesamtübersicht
 
 ### Neu
