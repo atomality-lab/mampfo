@@ -1,5 +1,28 @@
 # Changelog
 
+## v0.6.3 – Robuster Sync, Offline & Wiederherstellung
+
+### Neu
+- Offline-Änderungen werden als ausstehender Geräteabgleich vorgemerkt
+- automatische Wiederaufnahme des Syncs nach Rückkehr der Internetverbindung
+- sichtbarer Offline-/Pending-Status unter **Einstellungen → Datenaustausch**
+- lokaler Rücksprungpunkt vor jedem regulären Cloud-Abgleich
+- Wiederherstellung des lokalen Stands vor dem letzten Cloud-Pull
+- Cloud-Wahl bei einer Konfliktauflösung legt vorher ebenfalls einen Rücksprungpunkt an
+
+### Korrigiert / gehärtet
+- abgelaufene Supabase-Sitzung wird bei reinem Netzwerk-/Offline-Fehler nicht mehr lokal gelöscht
+- Baseline, Konflikte und lokale Nutzdaten bleiben bei abgebrochenem Sync unverändert bzw. wiederanlauffähig
+- bereits teilweise übertragene Datensätze können beim nächsten Drei-Wege-Abgleich wiedererkannt werden
+- Löschmarken und Fasten-Tombstones bleiben weiterhin synchronisationsfest
+
+### Update-Paket
+- `supabase-config.js` wird nicht mehr mitgeliefert und dadurch beim Repository-Update nicht überschrieben
+- `SUPABASE_SETUP.sql` wird nicht mehr mitgeliefert; das Schema aus v0.6.1/v0.6.2 bleibt gültig
+- keine Supabase-Migration erforderlich
+- Datenmodell bleibt Version 4
+- Service-Worker-Cache auf v0.6.3 aktualisiert
+
 ## v0.6.2 – Bidirektionaler Geräteabgleich
 
 ### Neu

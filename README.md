@@ -1,6 +1,54 @@
-# Mampfo v0.6.2
+# Mampfo v0.6.3
 
-Mampfo ist eine persönliche **Local-first-PWA** zum Ernährungstracking. Die App funktioniert weiterhin vollständig mit lokalen Daten; v0.6.1 ergänzt optional ein Supabase-Fundament für den späteren geräteübergreifenden Datenaustausch.
+Mampfo ist eine persönliche **Local-first-PWA** zum Ernährungstracking. Die App funktioniert weiterhin vollständig mit lokalen Daten und kann angemeldete Geräte über die persönliche Supabase-Cloud abgleichen.
+
+## Neu in v0.6.3 – Robuster Sync, Offline-Warteschlange & Rücksprungpunkt
+
+v0.6.3 härtet den Geräteabgleich aus v0.6.2 ab. Die Datenstruktur in Supabase bleibt unverändert; es ist **keine SQL-Migration** erforderlich.
+
+### Offline-Verhalten
+
+- Mampfo arbeitet offline unverändert lokal weiter.
+- Lokale Änderungen werden als **Synchronisierung ausstehend** vorgemerkt.
+- Sobald die Internetverbindung zurückkehrt, wird der Abgleich erneut angestoßen.
+- Läuft ein Supabase-Token während Offline-Betrieb ab, wird die lokale Anmeldung nicht mehr vorschnell gelöscht. Die Sitzung wird erst bei einem echten Authentifizierungsfehler verworfen.
+- In **Einstellungen → Datenaustausch** ist der Offline-Zustand sichtbar; Cloud-Aktionen bleiben bis zur Rückkehr der Verbindung deaktiviert.
+
+### Sicherer Wiederanlauf
+
+Der Drei-Wege-Abgleich bleibt transaktionsähnlich aufgebaut: Der lokale Baseline-Stand wird erst nach einem vollständigen erfolgreichen Durchlauf aktualisiert. Wird ein Sync während einzelner Uploads unterbrochen, kann der nächste Durchlauf bereits übertragene Datensätze wiedererkennen und den Abgleich fortsetzen, statt sie als neue Version zu duplizieren.
+
+### Lokaler Rücksprungpunkt
+
+Vor einem regulären Cloud-Abgleich speichert Mampfo genau **einen lokalen Rücksprungpunkt** des aktuellen Datenbestands. Wird bei einem Cloud-Pull oder einer Konfliktentscheidung die Cloud-Version lokal übernommen, kann unter **Einstellungen → Datenaustausch** der vorherige lokale Stand wiederhergestellt werden.
+
+Die Wiederherstellung gilt als neue lokale Änderung. Beim nächsten erfolgreichen Sync wird dieser wiederhergestellte Stand deshalb regulär mit der Cloud abgeglichen.
+
+Der Rücksprungpunkt liegt nur lokal auf dem jeweiligen Gerät unter `mampfo.syncBackup.v3.<userId>` und ist kein zusätzliches Cloud-Backup.
+
+### Konflikte und Löschungen
+
+- Konflikte aus v0.6.2 bleiben erhalten und werden niemals automatisch überschrieben.
+- Die Wahl **Cloud-Version verwenden** legt vorher ebenfalls einen lokalen Rücksprungpunkt an.
+- synchronisierte Löschmarken und Fasten-Tombstones bleiben unverändert erhalten.
+- ein Verbindungsabbruch löscht weder Konflikte noch Baseline noch lokale Nutzdaten.
+
+### Update-Paket
+
+Auf Wunsch enthält das v0.6.3-ZIP **nicht** mehr:
+
+- `supabase-config.js`
+- `SUPABASE_SETUP.sql`
+
+Die bereits konfigurierte `supabase-config.js` und das vorhandene Supabase-Schema im Repository bleiben damit unangetastet. Das ZIP ist deshalb als **Update über die bestehende Installation** gedacht, nicht als frische Supabase-Ersteinrichtung.
+
+### Technik
+
+- keine Änderung am Supabase-Schema
+- Datenmodell bleibt Version 4
+- neue lokale Sicherheitskopie `mampfo.syncBackup.v3.<userId>`
+- Sync-Status merkt zusätzlich ausstehende Offline-Abgleiche
+- Service-Worker-Cache: `mampfo-v0.6.3`
 
 ## Neu in v0.6.2 – Geräteübergreifende Synchronisation
 
@@ -85,11 +133,11 @@ Die Auswertungen selbst werden weiterhin live aus diesen Daten berechnet und nic
 
 ### Sicherheit
 
-Im Paket liegt `SUPABASE_SETUP.sql`. Das Skript aktiviert **Row Level Security (RLS)** auf allen Mampfo-Cloudtabellen und erlaubt angemeldeten Benutzern nur Zugriff auf ihre eigenen Zeilen. Im Browser wird ausschließlich ein **Publishable Key** verwendet. Secret- oder `service_role`-Keys dürfen niemals in Mampfo eingetragen werden.
+Im ursprünglichen v0.6.1-Paket lag `SUPABASE_SETUP.sql`. Das Skript aktiviert **Row Level Security (RLS)** auf allen Mampfo-Cloudtabellen und erlaubt angemeldeten Benutzern nur Zugriff auf ihre eigenen Zeilen. Im Browser wird ausschließlich ein **Publishable Key** verwendet. Secret- oder `service_role`-Keys dürfen niemals in Mampfo eingetragen werden.
 
 ### Einrichtung
 
-Die vollständige Schritt-für-Schritt-Anleitung steht in **`SUPABASE_SETUP.md`**. Kurzfassung:
+Für die damalige Ersteinrichtung galt folgende Kurzfassung:
 
 1. eigenes Supabase-Projekt für Mampfo anlegen
 2. `SUPABASE_SETUP.sql` im SQL Editor ausführen

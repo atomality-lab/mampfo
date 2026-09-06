@@ -7,6 +7,7 @@
   const BASELINE_PREFIX = 'mampfo.syncBaseline.v2.';
   const CONFLICT_PREFIX = 'mampfo.syncConflicts.v2.';
   const STATUS_PREFIX = 'mampfo.syncStatus.v2.';
+  const BACKUP_PREFIX = 'mampfo.syncBackup.v3.';
   const STORAGE = {
     settings: 'mampfo.settings.v2',
     entries: 'mampfo.entries.v2',
@@ -30,6 +31,15 @@
   let syncPromise = null;
   let syncTimer = null;
   let appReady = false;
+
+  function isOnline() {
+    return typeof navigator === 'undefined' || navigator.onLine !== false;
+  }
+
+  function isConnectivityError(error) {
+    const message = String(error?.message || error || '');
+    return /nicht erreichbar|offline|netzwerk|network|failed to fetch|load failed/i.test(message);
+  }
 
   function cleanUrl(value) {
     return String(value || '').trim().replace(/\/+$/, '');
@@ -151,7 +161,9 @@
       const payload = await authRequest('token?grant_type=refresh_token', { body: { refresh_token: current.refresh_token } });
       return saveSession(payload);
     } catch (error) {
-      saveSession(null);
+      // Ein abgelaufenes Token während Offline-Betrieb darf die lokale Anmeldung
+      // nicht zerstören. Erst ein echter Auth-Fehler verwirft die Sitzung.
+      if (!isConnectivityError(error)) saveSession(null);
       throw error;
     }
   }
@@ -372,6 +384,80 @@
     return saveJson(userKey(STATUS_PREFIX, userId), { ...current, ...patch });
   }
 
+
+  function backupKey(userId) {
+    return userKey(BACKUP_PREFIX, userId);
+  }
+
+  function lastBackup(userId = currentUser()?.id) {
+    if (!userId) return null;
+    return loadJson(backupKey(userId), null);
+  }
+
+  function createLocalBackup(userId, reason, snapshot = localData(), appVersion = '0.6.3') {
+    if (!userId) throw new Error('Für die Sicherheitskopie fehlt die Benutzerzuordnung.');
+    const backup = {
+      schema: 1,
+      userId,
+      createdAt: new Date().toISOString(),
+      reason: reason || 'sync',
+      appVersion,
+      snapshot: deepClone(snapshot)
+    };
+    try {
+      saveJson(backupKey(userId), backup);
+      return backup;
+    } catch {
+      throw new Error('Mampfo konnte vor dem Cloud-Abgleich keine lokale Sicherheitskopie anlegen. Der Abgleich wurde vorsichtshalber nicht fortgesetzt.');
+    }
+  }
+
+  function markPending(userId, reason = 'offline') {
+    if (!userId) return null;
+    const current = syncStatus(userId) || {};
+    return setSyncStatus(userId, {
+      pending: true,
+      pendingSince: current.pendingSince || new Date().toISOString(),
+      pendingReason: reason
+    });
+  }
+
+  function clearPending(userId) {
+    if (!userId) return null;
+    return setSyncStatus(userId, { pending: false, pendingSince: null, pendingReason: null });
+  }
+
+  function applySnapshotLocally(snapshot, source = 'cloud') {
+    if (window.MampfoDataBridge?.apply) {
+      window.MampfoDataBridge.apply(deepClone(snapshot), { source });
+      return;
+    }
+    localStorage.setItem(STORAGE.settings, JSON.stringify(snapshot.settings || {}));
+    localStorage.setItem(STORAGE.entries, JSON.stringify(snapshot.entries || []));
+    localStorage.setItem(STORAGE.foods, JSON.stringify(snapshot.foods || []));
+    localStorage.setItem(STORAGE.recipes, JSON.stringify(snapshot.recipes || []));
+    localStorage.setItem(STORAGE.fastPlans, JSON.stringify(snapshot.fastPlans || []));
+    localStorage.setItem(STORAGE.fastingSessions, JSON.stringify(snapshot.fastingSessions || []));
+    localStorage.setItem(STORAGE.onboarded, snapshot.onboarded ? 'yes' : 'no');
+    localStorage.setItem(STORAGE.dataVersion, String(snapshot.dataVersion || 4));
+  }
+
+  function restoreLastBackup(appVersion = '0.6.3') {
+    const userId = currentUser()?.id;
+    if (!userId) throw new Error('Bitte zuerst bei Mampfo Cloud anmelden.');
+    const backup = lastBackup(userId);
+    if (!backup?.snapshot) throw new Error('Es ist kein lokaler Rücksprungpunkt vorhanden.');
+    applySnapshotLocally(backup.snapshot, 'cloud-backup-restore');
+    markPending(userId, 'backup-restore');
+    setSyncStatus(userId, {
+      lastRestoreAt: new Date().toISOString(),
+      lastError: null,
+      restoreSourceAt: backup.createdAt || null
+    });
+    scheduleSync(appVersion, { delay: 500, reason: 'backup-restore' });
+    return { restoredAt: new Date().toISOString(), backupAt: backup.createdAt || null };
+  }
+
   function recordRows(records, userId) {
     const now = new Date().toISOString();
     return records.map(record => ({
@@ -568,7 +654,7 @@
     }], 'user_id');
   }
 
-  async function initializeCloud(appVersion = '0.6.2') {
+  async function initializeCloud(appVersion = '0.6.3') {
     const user = await getUser();
     if (!user?.id) throw new Error('Die Anmeldung konnte nicht bestätigt werden.');
     const before = await cloudCounts();
@@ -611,7 +697,7 @@
     return await cloudCounts();
   }
 
-  async function performSync(appVersion = '0.6.2', reason = 'manual') {
+  async function performSync(appVersion = '0.6.3', reason = 'manual') {
     const user = await getUser();
     if (!user?.id) throw new Error('Bitte zuerst bei Mampfo Cloud anmelden.');
     const counts = await cloudCounts();
@@ -622,6 +708,9 @@
 
     const remote = await fetchRemoteSnapshot();
     const local = localData();
+    // Ein einzelner lokaler Rücksprungpunkt schützt vor unerwarteten Cloud-Pulls
+    // und vor einem Abbruch mitten im mehrstufigen Geräteabgleich.
+    createLocalBackup(user.id, reason, local, appVersion);
     const working = deepClone(local);
     const baseline = loadBaseline(user.id);
     const previousConflicts = new Map(conflicts(user.id).map(item => [item.id, item]));
@@ -759,19 +848,7 @@
       }
     }
 
-    if (changedLocal) {
-      if (window.MampfoDataBridge?.apply) window.MampfoDataBridge.apply(working, { source: 'cloud' });
-      else {
-        localStorage.setItem(STORAGE.settings, JSON.stringify(working.settings || {}));
-        localStorage.setItem(STORAGE.entries, JSON.stringify(working.entries || []));
-        localStorage.setItem(STORAGE.foods, JSON.stringify(working.foods || []));
-        localStorage.setItem(STORAGE.recipes, JSON.stringify(working.recipes || []));
-        localStorage.setItem(STORAGE.fastPlans, JSON.stringify(working.fastPlans || []));
-        localStorage.setItem(STORAGE.fastingSessions, JSON.stringify(working.fastingSessions || []));
-        localStorage.setItem(STORAGE.onboarded, working.onboarded ? 'yes' : 'no');
-        localStorage.setItem(STORAGE.dataVersion, String(working.dataVersion || 4));
-      }
-    }
+    if (changedLocal) applySnapshotLocally(working, 'cloud');
 
     saveBaseline(user.id, baseline);
     saveConflicts(user.id, nextConflicts);
@@ -783,34 +860,61 @@
       reason,
       conflictCount: nextConflicts.length,
       uploaded,
-      downloaded
+      downloaded,
+      pending: false,
+      pendingSince: null,
+      pendingReason: null,
+      inProgress: false
     });
     return { uploaded, downloaded, conflicts: nextConflicts.length, changedLocal, lastSyncAt: stamp };
   }
 
-  async function syncNow(appVersion = '0.6.2', options = {}) {
+  async function syncNow(appVersion = '0.6.3', options = {}) {
     if (syncPromise) return syncPromise;
     const reason = options.reason || 'manual';
+    const userId = currentUser()?.id;
+    if (!isOnline()) {
+      markPending(userId, reason);
+      const error = new Error('Du bist gerade offline. Deine Änderungen bleiben lokal gespeichert und werden synchronisiert, sobald wieder eine Verbindung besteht.');
+      if (userId) setSyncStatus(userId, { lastError: error.message, lastAttemptAt: new Date().toISOString(), reason, inProgress: false });
+      throw error;
+    }
+    if (userId) setSyncStatus(userId, { inProgress: true, lastAttemptAt: new Date().toISOString(), reason });
     syncPromise = performSync(appVersion, reason).catch(error => {
-      const userId = currentUser()?.id;
-      if (userId) setSyncStatus(userId, { lastError: error.message || String(error), lastAttemptAt: new Date().toISOString(), reason });
+      const activeUserId = currentUser()?.id || userId;
+      if (activeUserId) {
+        if (isConnectivityError(error)) markPending(activeUserId, reason);
+        setSyncStatus(activeUserId, { lastError: error.message || String(error), lastAttemptAt: new Date().toISOString(), reason, inProgress: false });
+      }
       throw error;
     }).finally(() => { syncPromise = null; });
     return syncPromise;
   }
 
-  function scheduleSync(appVersion = '0.6.2', options = {}) {
+  function scheduleSync(appVersion = '0.6.3', options = {}) {
     if (!appReady || !isConfigured() || !currentUser()) return;
+    const reason = options.reason || 'automatic';
+    if (!isOnline()) {
+      markPending(currentUser()?.id, reason);
+      return;
+    }
     window.clearTimeout(syncTimer);
     const delay = Number(options.delay ?? 1600);
     syncTimer = window.setTimeout(() => {
-      if (window.MampfoDataBridge?.canAutoSync && !window.MampfoDataBridge.canAutoSync()) return;
-      syncNow(appVersion, { reason: options.reason || 'automatic' }).catch(() => {});
+      if (window.MampfoDataBridge?.canAutoSync && !window.MampfoDataBridge.canAutoSync()) {
+        markPending(currentUser()?.id, reason);
+        return;
+      }
+      syncNow(appVersion, { reason }).catch(() => {});
     }, Math.max(0, delay));
   }
 
-  function onAppReady(appVersion = '0.6.2') {
+  function onAppReady(appVersion = '0.6.3') {
     appReady = true;
+    if (!isOnline()) {
+      markPending(currentUser()?.id, 'app-start-offline');
+      return;
+    }
     scheduleSync(appVersion, { delay: 1200, reason: 'app-start' });
   }
 
@@ -839,7 +943,7 @@
     return effectiveLocalState(conflict.recordId, map, baseEntry);
   }
 
-  async function resolveConflict(conflictIdentifier, choice, appVersion = '0.6.2') {
+  async function resolveConflict(conflictIdentifier, choice, appVersion = '0.6.3') {
     const user = await getUser();
     if (!user?.id) throw new Error('Bitte zuerst anmelden.');
     const list = conflicts(user.id);
@@ -861,9 +965,10 @@
     } else if (choice === 'cloud') {
       finalState = currentRemote;
       const snapshot = localData();
+      createLocalBackup(user.id, 'conflict-cloud-choice', snapshot, appVersion);
       if (conflict.collection === 'settings') applySettingsToSnapshot(snapshot, finalState);
       else applyStateToSnapshot(snapshot, conflict.collection, conflict.recordId, finalState);
-      if (window.MampfoDataBridge?.apply) window.MampfoDataBridge.apply(snapshot, { source: 'cloud-conflict' });
+      applySnapshotLocally(snapshot, 'cloud-conflict');
     } else {
       throw new Error('Unbekannte Konfliktentscheidung.');
     }
@@ -874,7 +979,7 @@
     const remaining = list.filter(item => item.id !== conflictIdentifier);
     saveConflicts(user.id, remaining);
     await touchSyncState(user.id, appVersion);
-    setSyncStatus(user.id, { lastSyncAt: new Date().toISOString(), lastError: null, conflictCount: remaining.length });
+    setSyncStatus(user.id, { lastSyncAt: new Date().toISOString(), lastError: null, conflictCount: remaining.length, inProgress: false });
     scheduleSync(appVersion, { delay: 300, reason: 'after-conflict' });
     return { remaining: remaining.length };
   }
@@ -896,6 +1001,9 @@
     conflicts,
     resolveConflict,
     syncStatus,
-    deviceId
+    deviceId,
+    isOnline,
+    lastBackup,
+    restoreLastBackup
   };
 })();

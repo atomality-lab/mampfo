@@ -1542,6 +1542,7 @@ button { cursor: pointer; }
 .cloud-logout { min-height: 40px; border: 0; background: transparent; color: var(--text-3); font-weight: 760; }
 .cloud-status-line { display: flex; align-items: center; gap: 8px; margin-top: 14px; padding: 9px 10px; border-radius: 12px; background: rgba(255,255,255,.72); color: var(--text-2); font-size: .72rem; }
 .cloud-status-dot { width: 8px; height: 8px; flex: 0 0 8px; border-radius: 50%; background: var(--sage); }
+.cloud-status-dot.offline { background: #b9a487; box-shadow: 0 0 0 3px rgba(185,164,135,.12); }
 .cloud-counts { display: grid; grid-template-columns: repeat(2, 1fr); gap: 7px; margin-top: 11px; }
 .cloud-counts > div { padding: 9px 10px; border-radius: 12px; background: rgba(255,255,255,.72); }
 .cloud-counts span, .cloud-counts strong { display: block; }
@@ -1551,6 +1552,9 @@ button { cursor: pointer; }
 .cloud-remote-summary span { color: var(--text-3); }
 .cloud-remote-summary strong { text-align: right; font-size: .66rem; }
 .cloud-footnote { color: var(--text-3) !important; font-size: .67rem !important; }
+.cloud-recovery-note { margin-top: 9px; padding: 9px 10px; border-radius: 11px; background: rgba(255,255,255,.64); color: #61726a; font-size: .66rem; line-height: 1.4; text-align: center; }
+.cloud-recovery-note.muted { color: var(--text-3); }
+.cloud-restore-button { background: #f4efe7; color: #71614f; }
 .cloud-blocked { opacity: .58; }
 .cloud-confirm-list { display: grid; gap: 1px; margin: 13px 0; overflow: hidden; border: 1px solid var(--line); border-radius: 13px; background: var(--line); }
 .cloud-confirm-list > div { display: flex; justify-content: space-between; gap: 12px; padding: 9px 11px; background: white; font-size: .75rem; }
