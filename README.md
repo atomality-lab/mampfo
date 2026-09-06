@@ -1,6 +1,44 @@
-# Mampfo v0.6.3
+# Mampfo v0.6.4
 
 Mampfo ist eine persönliche **Local-first-PWA** zum Ernährungstracking. Die App funktioniert weiterhin vollständig mit lokalen Daten und kann angemeldete Geräte über die persönliche Supabase-Cloud abgleichen.
+
+## Neu in v0.6.4 – Sync-Komfort & Transparenz
+
+v0.6.4 baut auf dem stabilen Geräteabgleich aus v0.6.3 auf. Die Synchronisations- und Supabase-Datenstruktur bleibt unverändert; der Schwerpunkt liegt auf einer verständlicheren Bedienung und sichtbaren Zuständen.
+
+### Neuer Sync-Status
+
+Unter **Einstellungen → Datenaustausch** zeigt Mampfo jetzt deutlich einen der Zustände:
+
+- **Alles aktuell**
+- **Synchronisierung läuft**
+- **Abgleich ausstehend**
+- **Offline**
+- **Konflikte offen**
+- **Letzter Abgleich fehlgeschlagen**
+
+Zusätzlich werden angezeigt:
+
+- letzter erfolgreicher Abgleich
+- letzter Synchronisationsversuch
+- Anzahl der beim letzten Erfolg hoch- und heruntergeladenen Datensätze
+- offene Konflikte nach Datenart
+
+### Gerätename
+
+Jedes Gerät erhält automatisch einen lokalen Namen wie **Windows-PC**, **iPad** oder **Android-Smartphone**. Der Name kann in den Cloud-Einstellungen geändert werden. Er dient nur der Orientierung und wird nicht in Supabase gespeichert.
+
+### Verbesserte Fehlermeldungen
+
+Typische Anmelde-, Netzwerk-, Sitzungs- und Berechtigungsfehler werden verständlicher formuliert. Bei Netzproblemen bleibt weiterhin alles lokal erhalten.
+
+### Update-Dateien
+
+Wie gewünscht enthält das v0.6.4-Paket **weder `supabase-config.js` noch `SUPABASE_SETUP.sql`**. Die bereits eingerichteten Dateien im Repository bleiben bestehen. Es ist keine SQL-Migration erforderlich.
+
+- Datenmodell bleibt Version 4
+- bestehende Supabase-Tabellen/RLS bleiben unverändert
+- Service-Worker-Cache: `mampfo-v0.6.4`
 
 ## Neu in v0.6.3 – Robuster Sync, Offline-Warteschlange & Rücksprungpunkt
 

@@ -1609,3 +1609,100 @@ button { cursor: pointer; }
 .cloud-conflict-compare strong { display: block; }
 .cloud-conflict-compare small { margin-bottom: 4px; color: var(--text-3); font-size: .63rem; }
 .cloud-conflict-compare strong { font-size: .78rem; line-height: 1.45; }
+
+/* v0.6.4 – Sync-Komfort & Transparenz */
+.cloud-device-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 13px;
+  padding: 10px 11px;
+  border-radius: 12px;
+  background: rgba(255,255,255,.68);
+}
+.cloud-device-row span,
+.cloud-device-row strong { display: block; }
+.cloud-device-row span { color: var(--text-3); font-size: .62rem; }
+.cloud-device-row strong { margin-top: 2px; font-size: .82rem; }
+.cloud-device-edit {
+  flex: 0 0 auto;
+  border: 1px solid #d8e2e5;
+  border-radius: 999px;
+  background: white;
+  color: #617987;
+  padding: 7px 10px;
+  font-size: .66rem;
+  font-weight: 780;
+}
+.cloud-sync-overview {
+  display: grid;
+  grid-template-columns: 50px 1fr;
+  gap: 11px;
+  align-items: center;
+  margin-top: 9px;
+  padding: 12px;
+  border: 1px solid #d9e4e6;
+  border-radius: 15px;
+  background: rgba(255,255,255,.78);
+}
+.cloud-sync-state-icon {
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  border-radius: 15px;
+  background: var(--sage-pale);
+  color: var(--sage-dark);
+  font-size: 1.45rem;
+  font-weight: 800;
+}
+.cloud-sync-overview small,
+.cloud-sync-overview strong,
+.cloud-sync-overview span { display: block; }
+.cloud-sync-overview small { color: var(--text-3); font-size: .6rem; font-weight: 780; text-transform: uppercase; letter-spacing: .035em; }
+.cloud-sync-overview strong { margin-top: 2px; font-size: .9rem; }
+.cloud-sync-overview > div > span { margin-top: 3px; color: var(--text-2); font-size: .66rem; line-height: 1.4; }
+.cloud-sync-overview.offline .cloud-sync-state-icon { background: #f4efe7; color: #806e58; }
+.cloud-sync-overview.pending .cloud-sync-state-icon { background: var(--apricot-pale); color: #936846; }
+.cloud-sync-overview.conflict .cloud-sync-state-icon { background: var(--lavender-pale); color: #75698b; }
+.cloud-sync-overview.error .cloud-sync-state-icon { background: var(--rose-pale); color: #8f6670; }
+.cloud-sync-overview.syncing .cloud-sync-state-icon { background: var(--bluegray-pale); color: #607b88; }
+.cloud-sync-overview.idle .cloud-sync-state-icon { background: var(--bluegray-pale); color: #607b88; }
+.cloud-sync-meta {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin-top: 7px;
+}
+.cloud-sync-meta > div {
+  min-width: 0;
+  padding: 8px 9px;
+  border-radius: 11px;
+  background: rgba(255,255,255,.62);
+}
+.cloud-sync-meta span,
+.cloud-sync-meta strong { display: block; }
+.cloud-sync-meta span { color: var(--text-3); font-size: .57rem; }
+.cloud-sync-meta strong { margin-top: 3px; overflow-wrap: anywhere; font-size: .66rem; line-height: 1.3; }
+.cloud-conflict-overview {
+  margin-top: 8px;
+  padding: 10px 11px;
+  border: 1px solid #dfd6ec;
+  border-radius: 12px;
+  background: var(--lavender-pale);
+}
+.cloud-conflict-overview > div { display: flex; justify-content: space-between; gap: 10px; align-items: center; }
+.cloud-conflict-overview span { color: #6f6387; font-size: .68rem; font-weight: 760; }
+.cloud-conflict-overview strong { color: #655879; font-size: .9rem; }
+.cloud-conflict-overview small { display: block; margin-top: 4px; color: #817790; font-size: .61rem; line-height: 1.4; }
+.cloud-device-modal-field { display: grid; gap: 6px; margin: 14px 0; color: var(--text-2); font-size: .72rem; font-weight: 760; }
+.cloud-device-modal-field input { width: 100%; min-height: 46px; border: 1px solid #d6dcda; border-radius: 12px; background: white; color: var(--text); padding: 10px 11px; outline: 0; }
+.cloud-device-modal-field input:focus { border-color: var(--sage); box-shadow: 0 0 0 3px rgba(150,173,140,.16); }
+.modal-icon.bluegray { background: var(--bluegray-pale); color: #607b88; }
+
+@media (max-width: 420px) {
+  .cloud-sync-meta { grid-template-columns: 1fr; }
+  .cloud-sync-meta > div { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+  .cloud-sync-meta strong { text-align: right; }
+}

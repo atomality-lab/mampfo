@@ -4,6 +4,7 @@
   const CONFIG = window.MAMPFO_SUPABASE || {};
   const SESSION_KEY = 'mampfo.cloudSession.v1';
   const DEVICE_KEY = 'mampfo.deviceId.v1';
+  const DEVICE_LABEL_KEY = 'mampfo.deviceLabel.v1';
   const BASELINE_PREFIX = 'mampfo.syncBaseline.v2.';
   const CONFLICT_PREFIX = 'mampfo.syncConflicts.v2.';
   const STATUS_PREFIX = 'mampfo.syncStatus.v2.';
@@ -103,6 +104,34 @@
       localStorage.setItem(DEVICE_KEY, id);
     }
     return id;
+  }
+
+  function suggestedDeviceLabel() {
+    const ua = String(typeof navigator !== 'undefined' ? navigator.userAgent || '' : '');
+    const platform = String(typeof navigator !== 'undefined' ? navigator.platform || '' : '');
+    const touch = Number(typeof navigator !== 'undefined' ? navigator.maxTouchPoints || 0 : 0);
+    if (/iPad/i.test(ua) || (/Mac/i.test(platform) && touch > 1)) return 'iPad';
+    if (/iPhone|iPod/i.test(ua)) return 'iPhone';
+    if (/Android/i.test(ua)) return /Mobile/i.test(ua) ? 'Android-Smartphone' : 'Android-Tablet';
+    if (/Windows/i.test(ua) || /Win/i.test(platform)) return 'Windows-PC';
+    if (/Macintosh|Mac OS/i.test(ua) || /Mac/i.test(platform)) return 'Mac';
+    if (/Linux/i.test(ua) || /Linux/i.test(platform)) return 'Linux-Gerät';
+    return 'Dieses Gerät';
+  }
+
+  function deviceLabel() {
+    const saved = String(localStorage.getItem(DEVICE_LABEL_KEY) || '').trim();
+    if (saved) return saved;
+    const label = suggestedDeviceLabel();
+    localStorage.setItem(DEVICE_LABEL_KEY, label);
+    return label;
+  }
+
+  function setDeviceLabel(value) {
+    const normalized = String(value || '').trim().replace(/\s+/g, ' ').slice(0, 40);
+    if (!normalized) throw new Error('Bitte einen Gerätenamen eingeben.');
+    localStorage.setItem(DEVICE_LABEL_KEY, normalized);
+    return normalized;
   }
 
   function userKey(prefix, userId) {
@@ -394,7 +423,7 @@
     return loadJson(backupKey(userId), null);
   }
 
-  function createLocalBackup(userId, reason, snapshot = localData(), appVersion = '0.6.3') {
+  function createLocalBackup(userId, reason, snapshot = localData(), appVersion = '0.6.4') {
     if (!userId) throw new Error('Für die Sicherheitskopie fehlt die Benutzerzuordnung.');
     const backup = {
       schema: 1,
@@ -442,7 +471,7 @@
     localStorage.setItem(STORAGE.dataVersion, String(snapshot.dataVersion || 4));
   }
 
-  function restoreLastBackup(appVersion = '0.6.3') {
+  function restoreLastBackup(appVersion = '0.6.4') {
     const userId = currentUser()?.id;
     if (!userId) throw new Error('Bitte zuerst bei Mampfo Cloud anmelden.');
     const backup = lastBackup(userId);
@@ -654,7 +683,7 @@
     }], 'user_id');
   }
 
-  async function initializeCloud(appVersion = '0.6.3') {
+  async function initializeCloud(appVersion = '0.6.4') {
     const user = await getUser();
     if (!user?.id) throw new Error('Die Anmeldung konnte nicht bestätigt werden.');
     const before = await cloudCounts();
@@ -697,7 +726,7 @@
     return await cloudCounts();
   }
 
-  async function performSync(appVersion = '0.6.3', reason = 'manual') {
+  async function performSync(appVersion = '0.6.4', reason = 'manual') {
     const user = await getUser();
     if (!user?.id) throw new Error('Bitte zuerst bei Mampfo Cloud anmelden.');
     const counts = await cloudCounts();
@@ -869,7 +898,7 @@
     return { uploaded, downloaded, conflicts: nextConflicts.length, changedLocal, lastSyncAt: stamp };
   }
 
-  async function syncNow(appVersion = '0.6.3', options = {}) {
+  async function syncNow(appVersion = '0.6.4', options = {}) {
     if (syncPromise) return syncPromise;
     const reason = options.reason || 'manual';
     const userId = currentUser()?.id;
@@ -891,9 +920,10 @@
     return syncPromise;
   }
 
-  function scheduleSync(appVersion = '0.6.3', options = {}) {
+  function scheduleSync(appVersion = '0.6.4', options = {}) {
     if (!appReady || !isConfigured() || !currentUser()) return;
     const reason = options.reason || 'automatic';
+    if (['local-change', 'backup-restore', 'after-conflict'].includes(reason)) markPending(currentUser()?.id, reason);
     if (!isOnline()) {
       markPending(currentUser()?.id, reason);
       return;
@@ -909,7 +939,7 @@
     }, Math.max(0, delay));
   }
 
-  function onAppReady(appVersion = '0.6.3') {
+  function onAppReady(appVersion = '0.6.4') {
     appReady = true;
     if (!isOnline()) {
       markPending(currentUser()?.id, 'app-start-offline');
@@ -943,7 +973,7 @@
     return effectiveLocalState(conflict.recordId, map, baseEntry);
   }
 
-  async function resolveConflict(conflictIdentifier, choice, appVersion = '0.6.3') {
+  async function resolveConflict(conflictIdentifier, choice, appVersion = '0.6.4') {
     const user = await getUser();
     if (!user?.id) throw new Error('Bitte zuerst anmelden.');
     const list = conflicts(user.id);
@@ -1002,6 +1032,8 @@
     resolveConflict,
     syncStatus,
     deviceId,
+    deviceLabel,
+    setDeviceLabel,
     isOnline,
     lastBackup,
     restoreLastBackup

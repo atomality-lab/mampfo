@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.6.4 – Sync-Komfort & Transparenz
+
+### Neu
+- klarer Synchronisationsstatus: aktuell, läuft, ausstehend, offline, Konflikt oder Fehler
+- letzter erfolgreicher Abgleich und letzter Versuch direkt sichtbar
+- letzter Datentransfer mit Upload-/Download-Anzahl sichtbar
+- offene Konflikte zusätzlich nach Datenart zusammengefasst
+- lokaler Gerätename mit automatischer Erkennung und Umbenennen-Funktion
+
+### Verbessert
+- lokale Änderungen markieren den Sync bereits vor dem automatischen Abgleich als ausstehend
+- verständlichere Meldungen bei Netzwerk-, Login-, Sitzungs- und RLS-/Berechtigungsfehlern
+- Status aktualisiert sich beim Wechsel zwischen online/offline und nach Cloud-Prüfungen
+- keine Änderung am Cloud-Datenmodell oder an bestehenden Tabellen
+
+### Update
+- `supabase-config.js` und `SUPABASE_SETUP.sql` sind wie gewünscht nicht Bestandteil des Update-Pakets
+- Service-Worker-Cache auf v0.6.4 aktualisiert
+
 ## v0.6.3 – Robuster Sync, Offline & Wiederherstellung
 
 ### Neu

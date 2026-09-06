@@ -1543,12 +1543,69 @@
     };
   }
 
+  function cloudPendingReasonLabel(reason) {
+    return ({
+      'local-change': 'lokale Änderung',
+      'backup-restore': 'Wiederherstellung',
+      'after-conflict': 'Konfliktlösung',
+      'online': 'Verbindung wiederhergestellt',
+      'visibility': 'App wieder geöffnet',
+      'after-login': 'Anmeldung',
+      'app-start': 'App-Start',
+      'app-start-offline': 'App-Start offline',
+      'offline': 'offline',
+      'manual': 'manueller Abgleich'
+    })[reason] || 'Änderung';
+  }
+
+  function cloudStatusDescriptor(info = {}, online = true, conflictCount = 0) {
+    if (!online) return { key: 'offline', icon: '⌁', title: 'Offline', detail: 'Lokale Änderungen bleiben auf diesem Gerät und werden später abgeglichen.' };
+    if (info.inProgress) return { key: 'syncing', icon: '↻', title: 'Synchronisierung läuft', detail: 'Mampfo gleicht lokale und Cloud-Daten gerade ab.' };
+    if (conflictCount > 0) return { key: 'conflict', icon: '↔', title: `${conflictCount} ${conflictCount === 1 ? 'Konflikt offen' : 'Konflikte offen'}`, detail: 'Nichts wird automatisch überschrieben. Bitte die Varianten prüfen.' };
+    if (info.pending) return { key: 'pending', icon: '…', title: 'Abgleich ausstehend', detail: `${cloudPendingReasonLabel(info.pendingReason)} wartet auf Synchronisierung.` };
+    if (info.lastError) return { key: 'error', icon: '!', title: 'Letzter Abgleich fehlgeschlagen', detail: cloudFriendlyError(info.lastError) };
+    if (info.lastSyncAt) return { key: 'current', icon: '✓', title: 'Alles aktuell', detail: `Zuletzt erfolgreich ${formatCloudSyncTime(info.lastSyncAt)}.` };
+    return { key: 'idle', icon: '☁', title: 'Noch nicht synchronisiert', detail: 'Cloud ist eingerichtet, aber es gab noch keinen vollständigen Geräteabgleich.' };
+  }
+
+  function cloudFriendlyError(error) {
+    const raw = String(error?.message || error || 'Unbekannter Fehler').trim();
+    if (/invalid login credentials|invalid credentials/i.test(raw)) return 'E-Mail oder Passwort stimmen nicht.';
+    if (/email not confirmed|confirm.*email/i.test(raw)) return 'Bitte bestätige zuerst deine E-Mail-Adresse.';
+    if (/user already registered|already been registered/i.test(raw)) return 'Für diese E-Mail gibt es bereits ein Mampfo-Konto.';
+    if (/failed to fetch|load failed|network|netzwerk|offline|nicht erreichbar/i.test(raw)) return 'Supabase ist gerade nicht erreichbar. Deine lokalen Änderungen bleiben erhalten.';
+    if (/jwt|token.*expired|session.*expired/i.test(raw)) return 'Deine Cloud-Sitzung ist abgelaufen. Bitte melde dich erneut an.';
+    if (/row.level|rls|permission denied|not allowed|unauthorized/i.test(raw)) return 'Supabase hat den Zugriff abgelehnt. Bitte prüfe die Zugriffsregeln deines Mampfo-Projekts.';
+    return raw;
+  }
+
+  function cloudTransferSummary(info = {}) {
+    const up = Number(info.uploaded || 0);
+    const down = Number(info.downloaded || 0);
+    if (!info.lastSyncAt) return '–';
+    if (!up && !down) return 'Keine Änderungen';
+    const parts = [];
+    if (up) parts.push(`↑ ${up}`);
+    if (down) parts.push(`↓ ${down}`);
+    return parts.join(' · ');
+  }
+
+  function cloudConflictGroupText(items = []) {
+    if (!items.length) return 'Keine offenen Konflikte';
+    const groups = new Map();
+    items.forEach(item => {
+      const label = cloudConflictCollectionLabel(item.collection);
+      groups.set(label, (groups.get(label) || 0) + 1);
+    });
+    return [...groups.entries()].map(([label, count]) => `${label}: ${count}`).join(' · ');
+  }
+
   function cloudSettingsMarkup() {
     const cloud = window.MampfoCloud;
     if (!cloud || !cloud.isConfigured()) {
       return `<section class="cloud-card cloud-unconfigured">
         <div class="cloud-card-head"><span class="cloud-icon">☁</span><div><strong>Supabase noch nicht konfiguriert</strong><small>Project URL und Publishable Key fehlen noch.</small></div></div>
-        <p>Trage die Werte in <code>supabase-config.js</code> ein und führe vorher <code>SUPABASE_SETUP.sql</code> in deinem Supabase-Projekt aus.</p>
+        <p>Die bestehende Datei <code>supabase-config.js</code> muss im Repository vorhanden und korrekt ausgefüllt sein.</p>
         <div class="cloud-hint">Nur einen <strong>Publishable Key</strong> verwenden. Secret- oder service_role-Keys gehören niemals in die PWA.</div>
       </section>`;
     }
@@ -1562,22 +1619,40 @@
           <label><span>Passwort</span><input id="cloud-password" type="password" autocomplete="current-password" minlength="6" required placeholder="mindestens 6 Zeichen"></label>
           <div class="cloud-actions"><button type="submit" class="primary-button">Anmelden</button><button type="button" class="secondary-button" id="cloud-signup">Konto erstellen</button></div>
         </form>
-        <p class="cloud-footnote">Mampfo bleibt lokal nutzbar. Nach der Anmeldung gleicht v0.6.3 deine Geräte über die persönliche Supabase-Cloud ab und puffert Offline-Änderungen sicher.</p>
+        <p class="cloud-footnote">Mampfo bleibt lokal nutzbar. Nach der Anmeldung synchronisiert v0.6.4 deine Geräte weiterhin automatisch und zeigt den Zustand des Abgleichs deutlich an.</p>
       </section>`;
     }
 
     const local = cloud.localCounts();
-    const conflictCount = cloud.conflicts()?.length || 0;
-    const last = cloud.syncStatus();
+    const conflictItems = cloud.conflicts?.() || [];
+    const conflictCount = conflictItems.length;
+    const last = cloud.syncStatus?.() || {};
     const backup = cloud.lastBackup?.();
     const online = cloud.isOnline?.() ?? navigator.onLine !== false;
-    const lastText = last?.pending
-      ? `Synchronisierung ausstehend${last.pendingSince ? ` seit ${formatCloudSyncTime(last.pendingSince)}` : ''}`
-      : last?.lastSyncAt ? `Zuletzt synchronisiert: ${formatCloudSyncTime(last.lastSyncAt)}` : 'Noch kein vollständiger Geräteabgleich';
+    const descriptor = cloudStatusDescriptor(last, online, conflictCount);
+    const lastSuccess = last.lastSyncAt ? formatCloudSyncTime(last.lastSyncAt) : 'noch nie';
+    const lastAttempt = last.lastAttemptAt ? formatCloudSyncTime(last.lastAttemptAt) : 'noch nie';
     const backupText = backup?.createdAt ? `Rücksprungpunkt vom ${formatCloudSyncTime(backup.createdAt)}` : 'Noch kein Rücksprungpunkt vorhanden';
+    const deviceName = cloud.deviceLabel?.() || 'Dieses Gerät';
     return `<section class="cloud-card">
       <div class="cloud-card-head"><span class="cloud-icon connected">☁</span><div><strong>Mampfo Cloud</strong><small>Angemeldet als ${esc(user.email || 'Mampfo-Konto')}</small></div></div>
-      <div class="cloud-status-line"><span class="cloud-status-dot ${online ? '' : 'offline'}" id="cloud-status-dot"></span><span id="cloud-status-text">${online ? 'Cloud-Status wird geprüft …' : 'Offline · Änderungen bleiben auf diesem Gerät gespeichert'}</span></div>
+
+      <div class="cloud-device-row">
+        <div><span>Dieses Gerät</span><strong id="cloud-device-name">${esc(deviceName)}</strong></div>
+        <button type="button" class="cloud-device-edit" id="cloud-device-edit">Umbenennen</button>
+      </div>
+
+      <div class="cloud-sync-overview ${esc(descriptor.key)}" id="cloud-sync-overview">
+        <span class="cloud-sync-state-icon" id="cloud-sync-state-icon">${esc(descriptor.icon)}</span>
+        <div><small>Synchronisationsstatus</small><strong id="cloud-sync-state-title">${esc(descriptor.title)}</strong><span id="cloud-sync-state-detail">${esc(descriptor.detail)}</span></div>
+      </div>
+
+      <div class="cloud-sync-meta">
+        <div><span>Letzter Erfolg</span><strong id="cloud-last-success">${esc(lastSuccess)}</strong></div>
+        <div><span>Letzter Versuch</span><strong id="cloud-last-attempt">${esc(lastAttempt)}</strong></div>
+        <div><span>Letzter Datentransfer</span><strong id="cloud-last-transfer">${esc(cloudTransferSummary(last))}</strong></div>
+      </div>
+
       <div class="cloud-counts local">
         <div><span>Ernährung</span><strong>${local.entries}</strong></div>
         <div><span>Lebensmittel</span><strong>${local.foods}</strong></div>
@@ -1586,17 +1661,22 @@
         <div><span>Fastenphasen</span><strong>${local.fastingSessions}</strong></div>
       </div>
       <div id="cloud-remote-summary" class="cloud-remote-summary"><span>Cloud</span><strong>${online ? 'Prüfung läuft …' : 'offline nicht erreichbar'}</strong></div>
-      <div class="cloud-last-sync" id="cloud-last-sync">${esc(lastText)}</div>
+
+      <div class="cloud-conflict-overview ${conflictCount ? '' : 'hidden'}" id="cloud-conflict-overview">
+        <div><span>Offene Konflikte</span><strong id="cloud-conflict-overview-count">${conflictCount}</strong></div>
+        <small id="cloud-conflict-overview-text">${esc(cloudConflictGroupText(conflictItems))}</small>
+      </div>
+
       <div class="cloud-actions stacked">
-        <button type="button" class="primary-button" id="cloud-sync" ${online ? 'disabled' : 'disabled'}>↻ ${online ? 'Jetzt synchronisieren' : 'Synchronisiert sobald online'}</button>
-        <button type="button" class="secondary-button cloud-conflict-button ${conflictCount ? '' : 'hidden'}" id="cloud-conflicts">Konflikte lösen · <span id="cloud-conflict-count">${conflictCount}</span></button>
-        <button type="button" class="secondary-button" id="cloud-check" ${online ? '' : 'disabled'}>Cloud-Status prüfen</button>
+        <button type="button" class="primary-button" id="cloud-sync" disabled>↻ ${online ? 'Jetzt synchronisieren' : 'Synchronisiert sobald online'}</button>
+        <button type="button" class="secondary-button cloud-conflict-button ${conflictCount ? '' : 'hidden'}" id="cloud-conflicts">Konflikte prüfen · <span id="cloud-conflict-count">${conflictCount}</span></button>
+        <button type="button" class="secondary-button" id="cloud-check" ${online ? '' : 'disabled'}>Cloud-Status neu prüfen</button>
         <button type="button" class="secondary-button" id="cloud-initialize" disabled>Lokale Daten erstmals in Cloud übernehmen</button>
         <button type="button" class="secondary-button cloud-restore-button ${backup ? '' : 'hidden'}" id="cloud-restore">↶ Lokalen Stand vor letztem Cloud-Pull wiederherstellen</button>
         <button type="button" class="cloud-logout" id="cloud-logout">Abmelden</button>
       </div>
       <div class="cloud-recovery-note ${backup ? '' : 'muted'}" id="cloud-recovery-note">${esc(backupText)}</div>
-      <p class="cloud-footnote">v0.6.3 arbeitet offline weiter, merkt ausstehende Änderungen vor und synchronisiert sie nach Rückkehr der Verbindung. Vor einem Cloud-Pull wird ein lokaler Rücksprungpunkt angelegt. Konflikte werden weiterhin niemals still überschrieben.</p>
+      <p class="cloud-footnote">v0.6.4 ändert die Synchronisationslogik nicht grundlegend, macht ihren Zustand aber sichtbar: ausstehende Änderungen, Konflikte, Offline-Status, letzter erfolgreicher Abgleich und Datentransfer sind direkt nachvollziehbar.</p>
     </section>`;
   }
 
@@ -1684,7 +1764,7 @@
         }
       } catch (error) {
         localButton.disabled = false; remoteButton.disabled = false;
-        showToast(error.message || 'Konflikt konnte nicht gelöst werden.');
+        showToast(cloudFriendlyError(error));
       }
     };
     document.getElementById('cloud-use-local').onclick = () => resolve('local');
@@ -1714,94 +1794,105 @@
     } catch (error) {
       button.disabled = false;
       button.textContent = '↻ Jetzt synchronisieren';
-      showToast(error.message || 'Synchronisierung fehlgeschlagen.');
+      showToast(cloudFriendlyError(error));
       refreshCloudStatus();
     }
   }
 
   async function refreshCloudStatus() {
     const cloud = window.MampfoCloud;
-    const status = document.getElementById('cloud-status-text');
-    const dot = document.getElementById('cloud-status-dot');
     const summary = document.getElementById('cloud-remote-summary');
     const init = document.getElementById('cloud-initialize');
     const sync = document.getElementById('cloud-sync');
     const check = document.getElementById('cloud-check');
     const conflictButton = document.getElementById('cloud-conflicts');
     const conflictCount = document.getElementById('cloud-conflict-count');
-    const lastSync = document.getElementById('cloud-last-sync');
+    const conflictOverview = document.getElementById('cloud-conflict-overview');
+    const conflictOverviewCount = document.getElementById('cloud-conflict-overview-count');
+    const conflictOverviewText = document.getElementById('cloud-conflict-overview-text');
     const recovery = document.getElementById('cloud-recovery-note');
     const restoreButton = document.getElementById('cloud-restore');
-    if (!cloud || !status || !summary || !init || !sync) return;
+    const overview = document.getElementById('cloud-sync-overview');
+    const stateIcon = document.getElementById('cloud-sync-state-icon');
+    const stateTitle = document.getElementById('cloud-sync-state-title');
+    const stateDetail = document.getElementById('cloud-sync-state-detail');
+    const lastSuccess = document.getElementById('cloud-last-success');
+    const lastAttempt = document.getElementById('cloud-last-attempt');
+    const lastTransfer = document.getElementById('cloud-last-transfer');
+    if (!cloud || !summary || !init || !sync) return;
+
+    const paintStatus = (info, online, conflictItems, override = null) => {
+      const descriptor = override || cloudStatusDescriptor(info || {}, online, conflictItems.length);
+      if (overview) overview.className = `cloud-sync-overview ${descriptor.key}`;
+      if (stateIcon) stateIcon.textContent = descriptor.icon;
+      if (stateTitle) stateTitle.textContent = descriptor.title;
+      if (stateDetail) stateDetail.textContent = descriptor.detail;
+      if (lastSuccess) lastSuccess.textContent = info?.lastSyncAt ? formatCloudSyncTime(info.lastSyncAt) : 'noch nie';
+      if (lastAttempt) lastAttempt.textContent = info?.lastAttemptAt ? formatCloudSyncTime(info.lastAttemptAt) : 'noch nie';
+      if (lastTransfer) lastTransfer.textContent = cloudTransferSummary(info || {});
+      const count = conflictItems.length;
+      if (conflictCount) conflictCount.textContent = String(count);
+      if (conflictOverviewCount) conflictOverviewCount.textContent = String(count);
+      if (conflictOverviewText) conflictOverviewText.textContent = cloudConflictGroupText(conflictItems);
+      conflictButton?.classList.toggle('hidden', count === 0);
+      conflictOverview?.classList.toggle('hidden', count === 0);
+    };
 
     const info = cloud.syncStatus?.() || {};
+    const conflictsNow = cloud.conflicts?.() || [];
     const backup = cloud.lastBackup?.();
     if (recovery) recovery.textContent = backup?.createdAt ? `Rücksprungpunkt vom ${formatCloudSyncTime(backup.createdAt)}` : 'Noch kein Rücksprungpunkt vorhanden';
     restoreButton?.classList.toggle('hidden', !backup);
 
-    if (cloud.isOnline && !cloud.isOnline()) {
-      status.textContent = 'Offline · lokale Änderungen bleiben sicher auf diesem Gerät';
-      dot?.classList.add('offline');
+    const online = cloud.isOnline?.() ?? navigator.onLine !== false;
+    paintStatus(info, online, conflictsNow);
+
+    if (!online) {
       summary.innerHTML = '<span>Cloud</span><strong>offline nicht erreichbar</strong>';
       init.disabled = true;
       sync.disabled = true;
       sync.textContent = '↻ Synchronisiert sobald online';
       if (check) check.disabled = true;
-      if (lastSync) {
-        if (info.pending) lastSync.textContent = `Synchronisierung vorgemerkt${info.pendingSince ? ` seit ${formatCloudSyncTime(info.pendingSince)}` : ''}`;
-        else if (info.lastSyncAt) lastSync.textContent = `Zuletzt synchronisiert: ${formatCloudSyncTime(info.lastSyncAt)}`;
-        else lastSync.textContent = 'Noch kein vollständiger Geräteabgleich';
-      }
       return;
     }
 
-    dot?.classList.remove('offline');
-    status.textContent = 'Cloud-Status wird geprüft …';
     init.disabled = true;
     sync.disabled = true;
-    sync.textContent = '↻ Jetzt synchronisieren';
+    sync.textContent = info.inProgress ? 'Synchronisierung läuft …' : '↻ Jetzt synchronisieren';
     if (check) check.disabled = false;
     try {
       const user = await cloud.getUser();
       if (!user) {
-        showToast('Bitte erneut anmelden.');
+        showToast('Deine Cloud-Anmeldung ist nicht mehr gültig. Bitte erneut anmelden.');
         render();
         return;
       }
       const counts = await cloud.cloudCounts();
-      const openConflicts = cloud.conflicts()?.length || 0;
       const latestInfo = cloud.syncStatus?.() || {};
+      const openConflicts = cloud.conflicts?.() || [];
       summary.innerHTML = `<span>Cloud</span><strong>${esc(cloudCountsText(counts))}</strong>`;
       if (counts.isEmpty) {
-        status.textContent = 'Cloud ist leer · Erst-Upload möglich';
         init.disabled = false;
         sync.disabled = true;
         init.classList.remove('cloud-blocked');
+        paintStatus(latestInfo, true, openConflicts, { key: 'idle', icon: '☁', title: 'Cloud ist leer', detail: 'Der kontrollierte Erst-Upload dieses Geräts kann gestartet werden.' });
       } else if (counts.isInitialized) {
-        status.textContent = openConflicts
-          ? `Synchronisation aktiv · ${openConflicts} ${openConflicts === 1 ? 'Konflikt' : 'Konflikte'} offen`
-          : latestInfo.pending ? 'Synchronisation aktiv · Änderungen warten auf Abgleich' : 'Synchronisation aktiv · bereit';
         init.disabled = true;
-        sync.disabled = false;
+        sync.disabled = Boolean(latestInfo.inProgress);
+        sync.textContent = latestInfo.inProgress ? 'Synchronisierung läuft …' : '↻ Jetzt synchronisieren';
         init.classList.add('cloud-blocked');
+        paintStatus(latestInfo, true, openConflicts);
       } else {
-        status.textContent = 'Cloud enthält Daten, ist aber nicht als Mampfo-Cloud initialisiert';
         init.disabled = true;
         sync.disabled = true;
-      }
-      if (conflictCount) conflictCount.textContent = String(openConflicts);
-      conflictButton?.classList.toggle('hidden', openConflicts === 0);
-      if (lastSync) {
-        if (latestInfo?.lastError && latestInfo?.pending) lastSync.textContent = `Abgleich ausstehend · ${latestInfo.lastError}`;
-        else if (latestInfo?.lastError) lastSync.textContent = `Letzter Versuch: ${latestInfo.lastError}`;
-        else if (latestInfo?.lastSyncAt) lastSync.textContent = `Zuletzt synchronisiert: ${formatCloudSyncTime(latestInfo.lastSyncAt)}`;
-        else lastSync.textContent = 'Noch kein vollständiger Geräteabgleich';
+        paintStatus(latestInfo, true, openConflicts, { key: 'error', icon: '!', title: 'Cloud nicht initialisiert', detail: 'Die Cloud enthält Daten, aber keinen gültigen Mampfo-Synchronisationsstand.' });
       }
     } catch (error) {
-      status.textContent = error.message || 'Cloud-Prüfung fehlgeschlagen.';
+      const message = cloudFriendlyError(error);
       summary.innerHTML = '<span>Cloud</span><strong>nicht verfügbar</strong>';
       init.disabled = true;
       sync.disabled = true;
+      paintStatus({ ...info, lastError: message }, true, conflictsNow, { key: 'error', icon: '!', title: 'Cloud-Prüfung fehlgeschlagen', detail: message });
     }
   }
 
@@ -1819,7 +1910,7 @@
         <div><span>Fastenpläne</span><strong>${counts.fastPlans}</strong></div>
         <div><span>Fastenphasen</span><strong>${counts.fastingSessions}</strong></div>
       </div>
-      <p class="cloud-warning">Vor dem Upload prüft Mampfo die Cloud noch einmal. Ist sie nicht leer, wird der Vorgang abgebrochen. Danach übernimmt v0.6.3 den regulären Geräteabgleich.</p>
+      <p class="cloud-warning">Vor dem Upload prüft Mampfo die Cloud noch einmal. Ist sie nicht leer, wird der Vorgang abgebrochen. Danach übernimmt v0.6.4 den regulären Geräteabgleich.</p>
       <div class="modal-actions"><button class="primary-button" id="confirm-cloud-init">Jetzt hochladen</button><button class="secondary-button" id="cancel-cloud-init">Abbrechen</button></div>
     </div></div>`;
     document.getElementById('cancel-cloud-init').onclick = () => { modalRoot.innerHTML = ''; };
@@ -1835,7 +1926,7 @@
       } catch (error) {
         button.disabled = false;
         button.textContent = 'Jetzt hochladen';
-        showToast(error.message || 'Cloud-Upload fehlgeschlagen.');
+        showToast(cloudFriendlyError(error));
       }
     };
   }
@@ -1858,7 +1949,34 @@
         showToast('Lokaler Stand wurde wiederhergestellt.');
         render();
       } catch (error) {
-        showToast(error.message || 'Wiederherstellung fehlgeschlagen.');
+        showToast(cloudFriendlyError(error));
+      }
+    };
+  }
+
+  function editCloudDeviceName() {
+    const cloud = window.MampfoCloud;
+    if (!cloud?.deviceLabel || !cloud?.setDeviceLabel) return;
+    const current = cloud.deviceLabel();
+    modalRoot.innerHTML = `<div class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="cloud-device-title"><div class="modal">
+      <div class="modal-icon bluegray">▣</div>
+      <h2 id="cloud-device-title">Gerät benennen</h2>
+      <p>Der Name hilft dir, deine Geräte auseinanderzuhalten. Er wird nur lokal auf diesem Gerät gespeichert.</p>
+      <label class="cloud-device-modal-field"><span>Gerätename</span><input id="cloud-device-name-input" type="text" maxlength="40" value="${esc(current)}" autocomplete="off"></label>
+      <div class="modal-actions"><button class="primary-button" id="cloud-device-save">Speichern</button><button class="secondary-button" id="cloud-device-cancel">Abbrechen</button></div>
+    </div></div>`;
+    const input = document.getElementById('cloud-device-name-input');
+    input?.focus(); input?.select();
+    document.getElementById('cloud-device-cancel').onclick = () => { modalRoot.innerHTML = ''; };
+    document.getElementById('cloud-device-save').onclick = () => {
+      try {
+        const value = cloud.setDeviceLabel(input?.value || '');
+        modalRoot.innerHTML = '';
+        const label = document.getElementById('cloud-device-name');
+        if (label) label.textContent = value;
+        showToast('Gerätename gespeichert.');
+      } catch (error) {
+        showToast(cloudFriendlyError(error));
       }
     };
   }
@@ -1884,7 +2002,7 @@
       } catch (error) {
         button.disabled = false;
         button.textContent = 'Anmelden';
-        showToast(error.message || 'Anmeldung fehlgeschlagen.');
+        showToast(cloudFriendlyError(error));
       }
     });
 
@@ -1908,7 +2026,7 @@
       } catch (error) {
         button.disabled = false;
         button.textContent = 'Konto erstellen';
-        showToast(error.message || 'Konto konnte nicht erstellt werden.');
+        showToast(cloudFriendlyError(error));
       }
     });
 
@@ -1922,6 +2040,7 @@
     document.getElementById('cloud-conflicts')?.addEventListener('click', openCloudConflictResolver);
     document.getElementById('cloud-initialize')?.addEventListener('click', confirmCloudInitialization);
     document.getElementById('cloud-restore')?.addEventListener('click', confirmCloudRestore);
+    document.getElementById('cloud-device-edit')?.addEventListener('click', editCloudDeviceName);
     if (cloud.currentUser()) refreshCloudStatus();
   }
 
@@ -1945,7 +2064,7 @@
       <div class="settings-title">☁ Datenaustausch</div>
       ${cloudSettingsMarkup()}
 
-      <div class="settings-note">${icon('rocket')}<br>Ernährung, Rezepte, Fasten und die vollständige Auswertung sind verfügbar. v0.6.3 macht den Geräteabgleich robuster: Offline-Änderungen werden vorgemerkt, Konflikte bleiben geschützt und vor Cloud-Pulls entsteht ein lokaler Rücksprungpunkt.</div>
+      <div class="settings-note">${icon('rocket')}<br>Ernährung, Rezepte, Fasten und die vollständige Auswertung sind verfügbar. v0.6.4 macht den Geräteabgleich transparenter: Sync-Status, letzter erfolgreicher Abgleich, ausstehende Änderungen, Konflikte und der Gerätename sind direkt sichtbar.</div>
       <div class="version">${esc(CFG.appName)} · Version ${esc(CFG.version)}</div>
     </main>${bottomNav('')}`;
 
