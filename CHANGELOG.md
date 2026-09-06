@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.7.2.1 – Open-Food-Facts-Suche korrigiert
+
+### Korrigiert
+- Produktsuche liefert wieder JSON statt einer HTML-Demoseite
+- Volltextsuche vorübergehend auf den von Open Food Facts weiterhin dokumentierten Legacy-v1-Suchendpunkt umgestellt
+- Suchanfragen bleiben bewusst manuell und respektieren das öffentliche Suchlimit
+- Antwortformat wird vor dem Parsen geprüft; HTML-/Fehlantworten erzeugen jetzt eine verständliche Meldung statt `Unexpected token '<'`
+- Nährwert-, Barcode- und Übernahmelogik aus v0.7.2 bleibt unverändert
+- Service-Worker-Cache auf v0.7.2.1 aktualisiert
+
 ## v0.7.2 – Open Food Facts & externe Quellen-Deduplizierung
 
 ### Neu

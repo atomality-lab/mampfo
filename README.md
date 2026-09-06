@@ -1,6 +1,12 @@
-# Mampfo v0.7.2
+# Mampfo v0.7.2.1
 
 Mampfo ist eine persönliche **Local-first-PWA** zum Ernährungstracking. Die App funktioniert weiterhin vollständig mit lokalen Daten und kann angemeldete Geräte über die persönliche Supabase-Cloud abgleichen.
+
+## Neu in v0.7.2.1 – Produktsuche korrigiert
+
+Die in v0.7.2 verwendete Search-a-licious-URL konnte im Browser eine HTML-Demoseite statt JSON zurückgeben. v0.7.2.1 verwendet deshalb für die Volltextsuche den weiterhin verfügbaren Open-Food-Facts-v1-Suchendpunkt.
+
+Zusätzlich prüft Mampfo jetzt das Antwortformat, bevor JSON verarbeitet wird. Unerwartete HTML-Antworten werden als verständlicher Suchfehler angezeigt. Die Übernahme von Produkten, Barcodes, Nährwert-Snapshots und die Quellen-Deduplizierung bleiben unverändert.
 
 ## Neu in v0.7.2 – Open Food Facts & Quellen-Deduplizierung
 

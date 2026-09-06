@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const SEARCH_URL = 'https://search.openfoodfacts.org/search';
+  const SEARCH_URL = 'https://world.openfoodfacts.org/cgi/search.pl';
   const SOURCE_URL = 'https://world.openfoodfacts.org/';
   const ATTRIBUTION = 'Open Food Facts – offene Produktdatenbank (ODbL)';
   const PAGE_SIZE = 20;
@@ -69,36 +69,66 @@
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
       throw new Error('Die Open-Food-Facts-Suche benötigt eine Internetverbindung.');
     }
+
+    const requestedPage = Math.max(1, Number(page) || 1);
     const url = new URL(SEARCH_URL);
-    url.searchParams.set('q', q);
-    url.searchParams.set('langs', 'de,en');
-    url.searchParams.set('page', String(Math.max(1, Number(page) || 1)));
+    url.searchParams.set('search_terms', q);
+    url.searchParams.set('search_simple', '1');
+    url.searchParams.set('action', 'process');
+    url.searchParams.set('json', '1');
+    url.searchParams.set('page', String(requestedPage));
     url.searchParams.set('page_size', String(PAGE_SIZE));
-    url.searchParams.set('boost_phrase', 'true');
+    url.searchParams.set('sort_by', 'popularity_key');
+    url.searchParams.set('lc', 'de');
     url.searchParams.set('fields', FIELDS.join(','));
 
     let response;
     try {
-      response = await fetch(url.toString(), { method: 'GET', mode: 'cors', cache: 'no-store' });
+      response = await fetch(url.toString(), {
+        method: 'GET',
+        mode: 'cors',
+        cache: 'no-store',
+        headers: { 'Accept': 'application/json' }
+      });
     } catch {
       throw new Error('Open Food Facts ist gerade nicht erreichbar. Bitte später erneut versuchen.');
     }
+
     if (!response.ok) {
       if (response.status === 429) throw new Error('Zu viele Suchanfragen. Bitte kurz warten und dann erneut suchen.');
       throw new Error(`Open Food Facts konnte nicht abgefragt werden (${response.status}).`);
     }
-    const payload = await response.json();
-    if (Array.isArray(payload?.errors) && payload.errors.length) {
-      throw new Error(payload.errors[0]?.description || payload.errors[0]?.title || 'Produktsuche nicht möglich.');
+
+    const contentType = String(response.headers.get('content-type') || '').toLowerCase();
+    const rawText = await response.text();
+    if (!contentType.includes('json')) {
+      const looksHtml = /^\s*<!doctype|^\s*<html/i.test(rawText);
+      throw new Error(looksHtml
+        ? 'Open Food Facts hat unerwartet eine Webseite statt Produktdaten geliefert. Bitte später erneut versuchen.'
+        : 'Open Food Facts hat ein unerwartetes Antwortformat geliefert.');
     }
-    const hits = Array.isArray(payload?.hits) ? payload.hits : [];
-    const products = hits.map(normalizeProduct).filter(item => item.code && item.name);
+
+    let payload;
+    try {
+      payload = JSON.parse(rawText);
+    } catch {
+      throw new Error('Die Antwort von Open Food Facts konnte nicht gelesen werden. Bitte später erneut versuchen.');
+    }
+
+    const sourceProducts = Array.isArray(payload?.products) ? payload.products : [];
+    const products = sourceProducts.map(normalizeProduct).filter(item => item.code && item.name);
+    const count = Number(payload?.count ?? products.length);
+    const pageSize = Number(payload?.page_size || PAGE_SIZE) || PAGE_SIZE;
+    const pageCountReturned = Number(payload?.page_count || products.length) || 0;
+    const totalPages = count > 0 ? Math.max(1, Math.ceil(count / pageSize)) : 0;
+
     return {
       products,
-      count: Number(payload?.count || products.length),
-      page: Number(payload?.page || page || 1),
-      pageCount: Number(payload?.page_count || 0),
-      isCountExact: payload?.is_count_exact !== false
+      count,
+      page: Number(payload?.page || requestedPage),
+      pageCount: totalPages,
+      pageCountReturned,
+      isCountExact: true
     };
   }
 
