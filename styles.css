@@ -1706,3 +1706,193 @@ button { cursor: pointer; }
   .cloud-sync-meta > div { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
   .cloud-sync-meta strong { text-align: right; }
 }
+
+/* v0.7.1 – BLS 4.0 */
+.food-source-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+  margin: 10px 0 12px;
+  padding: 5px;
+  border-radius: 16px;
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+}
+.food-source-tab {
+  min-height: 42px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--text-2);
+  font-size: .78rem;
+  font-weight: 790;
+}
+.food-source-tab.active {
+  background: white;
+  color: var(--sage-dark);
+  box-shadow: 0 3px 10px rgba(54,67,58,.07);
+}
+.bls-loading {
+  min-height: 78px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  color: var(--text-3);
+  font-size: .78rem;
+}
+.bls-spinner {
+  width: 17px;
+  height: 17px;
+  border: 2px solid #dce5d8;
+  border-top-color: var(--sage-dark);
+  border-radius: 50%;
+  animation: bls-spin .8s linear infinite;
+}
+@keyframes bls-spin { to { transform: rotate(360deg); } }
+.bls-status-card {
+  display: grid;
+  grid-template-columns: 50px minmax(0,1fr) 34px;
+  gap: 11px;
+  align-items: center;
+  margin: 9px 0 5px;
+  padding: 12px;
+  border-radius: 18px;
+  border: 1px solid #dce8d7;
+  background: linear-gradient(135deg, var(--sage-pale), #fbfcfa);
+}
+.bls-status-icon,
+.bls-setup-icon,
+.bls-result-icon {
+  display: grid;
+  place-items: center;
+  background: rgba(255,255,255,.84);
+  color: var(--sage-dark);
+}
+.bls-status-icon { width: 50px; height: 50px; border-radius: 16px; font-size: 1.4rem; }
+.bls-status-card small,
+.bls-status-card strong,
+.bls-status-card span { display: block; }
+.bls-status-card small { color: var(--text-3); font-size: .65rem; }
+.bls-status-card strong { margin: 2px 0 3px; font-size: .86rem; }
+.bls-status-card span { color: var(--text-2); font-size: .67rem; line-height: 1.4; }
+.bls-more-button {
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255,255,255,.72);
+  color: var(--text-2);
+  font-size: 1.25rem;
+  line-height: 1;
+}
+.bls-search-box { margin-top: 11px; }
+.bls-result-list { display: grid; gap: 8px; }
+.bls-result-card {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 46px minmax(0,1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 11px;
+  border: 1px solid var(--line);
+  border-radius: 17px;
+  background: white;
+  color: var(--text);
+  text-align: left;
+}
+.bls-result-icon { width: 46px; height: 46px; border-radius: 14px; font-size: 1.25rem; background: var(--sage-pale); }
+.bls-result-copy { min-width: 0; }
+.bls-result-copy strong,
+.bls-result-copy small,
+.bls-result-copy span { display: block; }
+.bls-result-copy strong { font-size: .88rem; line-height: 1.3; }
+.bls-result-copy small { margin-top: 3px; color: var(--text-2); font-size: .68rem; line-height: 1.4; }
+.bls-result-copy span { margin-top: 3px; color: var(--text-3); font-size: .6rem; line-height: 1.35; }
+.bls-attribution {
+  margin: 13px 1px 4px;
+  padding: 10px 11px;
+  border-radius: 13px;
+  background: var(--surface-soft);
+  color: var(--text-3);
+  font-size: .62rem;
+  line-height: 1.45;
+}
+.bls-attribution strong,
+.bls-attribution span { display: block; }
+.bls-attribution strong { color: var(--text-2); margin-bottom: 2px; }
+.bls-setup-card {
+  margin-top: 10px;
+  padding: 20px 16px 16px;
+  border-radius: 22px;
+  border: 1px solid #dce8d7;
+  background: linear-gradient(180deg, #fbfcfa, var(--sage-pale));
+  text-align: center;
+}
+.bls-setup-icon {
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 10px;
+  border-radius: 20px;
+  font-size: 1.8rem;
+}
+.bls-setup-card h3 { margin: 0 0 7px; font-size: 1.03rem; }
+.bls-setup-card > p { margin: 0 auto 14px; max-width: 510px; color: var(--text-2); font-size: .78rem; line-height: 1.5; }
+.bls-setup-steps {
+  display: grid;
+  gap: 7px;
+  margin: 14px 0;
+  text-align: left;
+}
+.bls-setup-steps span {
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(255,255,255,.72);
+  color: var(--text-2);
+  font-size: .72rem;
+}
+.bls-setup-steps b {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--sage-pale);
+  color: var(--sage-dark);
+}
+.bls-setup-actions { display: grid; gap: 8px; margin-top: 12px; }
+.bls-import-progress { margin-top: 14px; text-align: left; }
+.bls-import-progress strong { display: block; margin-top: 6px; color: var(--text-2); font-size: .7rem; }
+.bls-progress-track { height: 8px; overflow: hidden; border-radius: 999px; background: rgba(80,100,83,.1); }
+.bls-progress-track span { display: block; width: 2%; height: 100%; border-radius: inherit; background: var(--sage); transition: width .2s ease; }
+.bls-detail-meta { margin-top: -7px !important; color: var(--text-3) !important; font-size: .68rem !important; }
+.bls-nutrient-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+  margin: 14px 0;
+}
+.bls-nutrient-grid > div {
+  padding: 10px;
+  border-radius: 12px;
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+}
+.bls-nutrient-grid > div:first-child { grid-column: 1 / -1; background: var(--apricot-pale); border-color: #efddcc; }
+.bls-nutrient-grid small,
+.bls-nutrient-grid strong { display: block; }
+.bls-nutrient-grid small { color: var(--text-3); font-size: .62rem; }
+.bls-nutrient-grid strong { margin-top: 2px; font-size: .9rem; }
+.bls-reference-note { padding: 9px 10px; border-radius: 11px; background: var(--bluegray-pale); color: #506e7a !important; font-size: .68rem !important; line-height: 1.45 !important; }
+.bls-existing-note { margin: 10px 0; padding: 9px 10px; border-radius: 11px; background: var(--sage-pale); color: var(--sage-dark); font-size: .7rem; font-weight: 740; }
+.bls-search-hint { margin-top: 8px; }
+
+@media (min-width: 620px) {
+  .bls-setup-actions { grid-template-columns: 1fr 1fr; }
+  .bls-nutrient-grid { grid-template-columns: repeat(5, 1fr); }
+  .bls-nutrient-grid > div:first-child { grid-column: auto; }
+}

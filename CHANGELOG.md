@@ -1,5 +1,32 @@
 # Changelog
 
+## v0.7.1 – BLS 4.0 Lebensmitteldatenbank
+
+### Neu
+- unter **Erfassen → Lebensmittel** neue Quellenwahl **Meine Lebensmittel | BLS 4.0**
+- einmaliger lokaler Import der offiziellen BLS-4.0-Hauptdatei `BLS_4_0_Daten_2025_DE.xlsx`
+- der Import liest nur BLS-Code, deutsche/englische Bezeichnung sowie Kalorien, Protein, Ballaststoffe, Fett und Kohlenhydrate
+- lokale BLS-Referenzdatenbank in IndexedDB; die Suche funktioniert danach vollständig offline
+- schnelle lokale Suche mit deutscher Namensnormalisierung und BLS-Code-Suche
+- BLS-Treffer mit Nährwertübersicht pro 100 g essbarem Anteil
+- BLS-Treffer können in **Meine Lebensmittel** übernommen werden
+- übernommene BLS-Lebensmittel verhalten sich anschließend wie normale Mampfo-Lebensmittel und werden über Supabase synchronisiert
+- bereits vorhandene gleichnamige bzw. bereits übernommene BLS-Lebensmittel werden erkannt
+- lokale BLS-Referenzdaten können neu importiert oder entfernt werden
+- Quellenhinweis und CC-BY-4.0-Attribution direkt in der BLS-Oberfläche
+
+### Datenlogik
+- BLS-Werte werden entsprechend der offiziellen Datenbank als Werte pro **100 g essbarem Anteil** übernommen
+- fehlende Nährstoffwerte bleiben fehlend und werden nicht als 0 interpretiert
+- ein BLS-Eintrag ohne Energie-Wert kann nicht als eigenes Lebensmittel übernommen werden
+- BLS-Referenzdaten selbst werden nicht über Supabase synchronisiert; sie werden einmal pro Gerät lokal importiert
+- übernommene persönliche Lebensmittel enthalten `source = bls`, BLS-Code und Versionsangabe als Herkunftsinformation
+- bestehendes Mampfo-Datenmodell bleibt Version 4
+- Service-Worker-Cache auf v0.7.1 aktualisiert
+
+### Quelle
+Max Rubner-Institut (2025): Bundeslebensmittelschlüssel (BLS), Version 4.0 – Deutsche Nährstoffdatenbank. Karlsruhe. DOI: 10.25826/Data20251217-134202-0. Lizenz: CC BY 4.0.
+
 ## v0.6.4 – Sync-Komfort & Transparenz
 
 ### Neu

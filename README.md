@@ -1,6 +1,47 @@
-# Mampfo v0.6.4
+# Mampfo v0.7.1
 
 Mampfo ist eine persönliche **Local-first-PWA** zum Ernährungstracking. Die App funktioniert weiterhin vollständig mit lokalen Daten und kann angemeldete Geräte über die persönliche Supabase-Cloud abgleichen.
+
+## Neu in v0.7.1 – BLS 4.0
+
+Mampfo kann jetzt die offizielle deutsche Nährstoffdatenbank **Bundeslebensmittelschlüssel (BLS) 4.0** als lokale Referenz verwenden.
+
+### Einmalige Einrichtung pro Gerät
+
+Unter **Erfassen → Lebensmittel → BLS 4.0** führt Mampfo durch den Import:
+
+1. offizielle BLS-Downloadseite öffnen
+2. die Hauptdatei `BLS_4_0_Daten_2025_DE.xlsx` herunterladen
+3. diese Datei in Mampfo auswählen
+4. Mampfo extrahiert lokal die für die App benötigten Werte
+
+Die große Originaldatei wird nicht dauerhaft in Mampfo gespeichert. Gespeichert werden nur die kompakt benötigten Referenzdaten. Danach funktioniert die BLS-Suche offline.
+
+### Suche und Übernahme
+
+Die BLS-Suche zeigt bis zu 40 passende Treffer und berücksichtigt deutsche Namen, englische Namen und BLS-Codes. Ein Treffer zeigt die Mampfo-relevanten Nährwerte pro 100 g essbarem Anteil.
+
+Mit **In meine Lebensmittel übernehmen** wird daraus ein normales persönliches Mampfo-Lebensmittel mit 100 g Bezugsmenge. Dieses persönliche Lebensmittel wird wie gewohnt über Supabase zwischen Geräten synchronisiert und kann später bearbeitet, favorisiert, in Rezepten verwendet oder mit beliebigen Mengen ins Tagebuch eingetragen werden.
+
+Die vollständige BLS-Referenzdatenbank selbst wird bewusst nicht in deine persönliche Supabase-Cloud kopiert. Deshalb muss sie auf jedem Gerät einmal lokal importiert werden.
+
+### Datenqualität
+
+Mampfo verwendet aus BLS 4.0 aktuell:
+
+- Energie / Kalorien (`ENERCC`)
+- Protein (`PROT625`)
+- Fett (`FAT`)
+- verfügbare Kohlenhydrate (`CHO`)
+- Gesamtballaststoffe (`FIBT`)
+
+Fehlende Werte bleiben offen und werden nicht künstlich zu Null.
+
+### Quelle und Lizenz
+
+Max Rubner-Institut (2025): **Bundeslebensmittelschlüssel (BLS), Version 4.0 – Deutsche Nährstoffdatenbank**. Karlsruhe. DOI: `10.25826/Data20251217-134202-0`. Lizenz: **CC BY 4.0**.
+
+Weitere Hinweise stehen in `BLS_IMPORT.md` und `THIRD_PARTY_LICENSES.md`.
 
 ## Neu in v0.6.4 – Sync-Komfort & Transparenz
 

@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const CFG = window.APP_CONFIG || { appName: 'Mampfo', version: '0.6.2' };
+  const CFG = window.APP_CONFIG || { appName: 'Mampfo', version: '0.7.1' };
   const STORAGE = {
     settings: 'mampfo.settings.v2',
     entries: 'mampfo.entries.v2',
@@ -151,6 +151,9 @@
     addRecipeSearch: '',
     recipeLogOrigin: 'recipes',
     selectedSavedFoodId: null,
+    foodLibrarySource: 'mine',
+    blsSearch: '',
+    blsSearchTimer: null,
     recipeDraftIngredients: null,
     recipeDraftForId: null,
     recipeEditorMode: null,
@@ -471,7 +474,7 @@
     const map = {
       settings: '⚙', calendar: '▣', prev: '‹', next: '›', flame: '♨', protein: '💪', leaf: '♧', clock: '◷',
       plus: '＋', home: '⌂', recipe: '▤', fasting: '☾', stats: '▥', back: '←', edit: '✎', trash: '♲',
-      food: '♜', scale: '↔', drop: '◒', carbs: '◇', target: '◎', rocket: '↗', star: '★', starEmpty: '☆', recent: '◷', search: '⌕', list: '☷', portions: '◫', bowl: '◡', save: '✓', moon: '☾', sun: '☼', plan: '◴'
+      food: '♜', scale: '↔', drop: '◒', carbs: '◇', target: '◎', rocket: '↗', star: '★', starEmpty: '☆', recent: '◷', search: '⌕', list: '☷', portions: '◫', bowl: '◡', save: '✓', moon: '☾', sun: '☼', plan: '◴', database: '◎'
     };
     return map[name] || '•';
   }
@@ -2084,12 +2087,29 @@
   }
 
   function renderAddFoods(target) {
+    target.innerHTML = `<div class="section-heading food-library-heading"><div><h2>Lebensmittel</h2><p>Eigene Lebensmittel und BLS 4.0 an einem Ort.</p></div>${state.foodLibrarySource === 'mine' ? `<button type="button" class="secondary-button compact-action" id="add-new-food">${icon('plus')} Neu</button>` : ''}</div>
+      <div class="food-source-tabs" role="tablist" aria-label="Lebensmittelquelle">
+        <button type="button" class="food-source-tab ${state.foodLibrarySource === 'mine' ? 'active' : ''}" data-food-source="mine">${icon('star')} Meine Lebensmittel</button>
+        <button type="button" class="food-source-tab ${state.foodLibrarySource === 'bls' ? 'active' : ''}" data-food-source="bls">${icon('database')} BLS 4.0</button>
+      </div>
+      <div id="food-source-content"></div>`;
+
+    target.querySelectorAll('[data-food-source]').forEach(btn => {
+      btn.onclick = () => {
+        state.foodLibrarySource = btn.dataset.foodSource;
+        renderAddTabContent();
+      };
+    });
+    if (state.foodLibrarySource === 'bls') renderBlsFoodsPanel(document.getElementById('food-source-content'));
+    else renderMyFoodsPanel(document.getElementById('food-source-content'));
+    document.getElementById('add-new-food')?.addEventListener('click', () => setView('foodEdit', { editingFoodId: '__new__', foodEditOrigin: 'add' }));
+  }
+
+  function renderMyFoodsPanel(target) {
     const sorted = [...state.savedFoods].sort((a, b) => a.name.localeCompare(b.name, 'de'));
-    target.innerHTML = `<div class="section-heading food-library-heading"><div><h2>Lebensmittel</h2><p>Deine persönliche Lebensmitteldatenbank direkt beim Erfassen.</p></div><button type="button" class="secondary-button compact-action" id="add-new-food">${icon('plus')} Neu</button></div>
-      <div class="manager-search"><span>${icon('search')}</span><input id="add-food-search" type="search" placeholder="Lebensmittel suchen" autocomplete="off"></div>
+    target.innerHTML = `<div class="manager-search"><span>${icon('search')}</span><input id="add-food-search" type="search" placeholder="Meine Lebensmittel suchen" autocomplete="off"></div>
       <div class="manager-caption">${state.savedFoods.length === 1 ? '<strong>1</strong> gespeichertes Lebensmittel' : `<strong>${state.savedFoods.length}</strong> gespeicherte Lebensmittel`}</div>
       <section id="add-food-list" class="manager-list">${managerFoodList(sorted)}</section>`;
-
     const refresh = value => {
       const needle = normalizeName(value);
       const foods = sorted.filter(food => normalizeName(food.name).includes(needle));
@@ -2097,8 +2117,240 @@
       bindManagerCards(document.getElementById('add-food-list'), 'add');
     };
     document.getElementById('add-food-search').addEventListener('input', event => refresh(event.target.value));
-    document.getElementById('add-new-food').onclick = () => setView('foodEdit', { editingFoodId: '__new__', foodEditOrigin: 'add' });
     bindManagerCards(document.getElementById('add-food-list'), 'add');
+  }
+
+  async function renderBlsFoodsPanel(target) {
+    if (!target) return;
+    if (!window.MampfoBLS) {
+      target.innerHTML = `<div class="mini-empty compact"><div class="mini-empty-icon">${icon('database')}</div><h3>BLS-Modul fehlt</h3><p>Die Datei bls.js konnte nicht geladen werden.</p></div>`;
+      return;
+    }
+    target.innerHTML = `<div class="bls-loading"><span class="bls-spinner"></span><span>BLS-Status wird geprüft …</span></div>`;
+    let meta = null;
+    try { meta = await window.MampfoBLS.getMeta(); }
+    catch (error) {
+      target.innerHTML = `<div class="mini-empty compact"><div class="mini-empty-icon">!</div><h3>BLS-Datenbank nicht verfügbar</h3><p>${esc(error.message || 'Die lokale Datenbank konnte nicht geöffnet werden.')}</p></div>`;
+      return;
+    }
+    if (state.foodLibrarySource !== 'bls') return;
+    if (!meta) return renderBlsSetup(target);
+
+    target.innerHTML = `<section class="bls-status-card">
+        <div class="bls-status-icon">${icon('database')}</div>
+        <div><small>Lokale Referenzdatenbank</small><strong>BLS ${esc(meta.version || '4.0')} · ${Number(meta.count || 0).toLocaleString('de-DE')} Lebensmittel</strong><span>Importiert ${esc(formatBlsImportDate(meta.importedAt))} · funktioniert offline</span></div>
+        <button type="button" class="bls-more-button" id="bls-manage" aria-label="BLS-Daten verwalten">⋯</button>
+      </section>
+      <div class="manager-search bls-search-box"><span>${icon('search')}</span><input id="bls-search" type="search" placeholder="BLS durchsuchen, z. B. Haferflocken" autocomplete="off" value="${esc(state.blsSearch)}"></div>
+      <div id="bls-search-caption" class="manager-caption">Suche nach mindestens zwei Zeichen · Werte pro 100 g essbarem Anteil</div>
+      <section id="bls-result-list" class="bls-result-list">${state.blsSearch.length >= 2 ? `<div class="bls-loading"><span class="bls-spinner"></span><span>Suche …</span></div>` : blsSearchHint()}</section>
+      ${blsAttributionMarkup()}`;
+
+    document.getElementById('bls-manage').onclick = () => showBlsManageModal(meta);
+    const input = document.getElementById('bls-search');
+    input.addEventListener('input', event => {
+      state.blsSearch = event.target.value;
+      window.clearTimeout(state.blsSearchTimer);
+      state.blsSearchTimer = window.setTimeout(() => runBlsSearch(state.blsSearch), 90);
+    });
+    if (state.blsSearch.length >= 2) runBlsSearch(state.blsSearch);
+  }
+
+  function formatBlsImportDate(iso) {
+    if (!iso) return '–';
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) return '–';
+    return new Intl.DateTimeFormat('de-DE', { day:'2-digit', month:'2-digit', year:'numeric' }).format(date);
+  }
+
+  function blsSearchHint() {
+    return `<div class="mini-empty compact bls-search-hint"><div class="mini-empty-icon">${icon('search')}</div><h3>Grundnahrungsmittel suchen</h3><p>Zum Beispiel „Haferflocken“, „Broccoli“, „Tofu“ oder „Kartoffel gekocht“.</p></div>`;
+  }
+
+  function blsAttributionMarkup() {
+    return `<div class="bls-attribution"><strong>BLS 4.0 · CC BY 4.0</strong><span>Quelle: Max Rubner-Institut (2025), Bundeslebensmittelschlüssel Version 4.0 · DOI 10.25826/Data20251217-134202-0</span></div>`;
+  }
+
+  function renderBlsSetup(target) {
+    target.innerHTML = `<section class="bls-setup-card">
+      <div class="bls-setup-icon">${icon('database')}</div>
+      <h3>BLS 4.0 einmalig einrichten</h3>
+      <p>Die offizielle BLS-Hauptdatei wird einmal auf diesem Gerät eingelesen. Mampfo speichert daraus nur Name, BLS-Code und die fünf Nährwerte, die wir aktuell verwenden. Danach funktioniert die Suche komplett offline.</p>
+      <div class="bls-setup-steps"><span><b>1</b> Offizielle BLS-Daten herunterladen</span><span><b>2</b> <strong>BLS_4_0_Daten_2025_DE.xlsx</strong> auswählen</span><span><b>3</b> Mampfo erstellt die lokale Suche</span></div>
+      <div class="bls-setup-actions">
+        <button type="button" class="secondary-button" id="bls-open-download">Offizielle BLS-Downloadseite</button>
+        <button type="button" class="primary-button" id="bls-import-button">${icon('database')} BLS-XLSX auswählen</button>
+      </div>
+      <input id="bls-file-input" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
+      <div id="bls-import-progress" class="bls-import-progress" hidden><div class="bls-progress-track"><span id="bls-progress-fill"></span></div><strong id="bls-progress-text">BLS wird vorbereitet …</strong></div>
+    </section>${blsAttributionMarkup()}`;
+    document.getElementById('bls-open-download').onclick = () => window.open(window.MampfoBLS.sourceUrl, '_blank', 'noopener');
+    document.getElementById('bls-import-button').onclick = () => document.getElementById('bls-file-input').click();
+    document.getElementById('bls-file-input').addEventListener('change', event => importBlsFile(event.target.files?.[0]));
+  }
+
+  async function importBlsFile(file) {
+    if (!file) return;
+    const progressBox = document.getElementById('bls-import-progress');
+    const fill = document.getElementById('bls-progress-fill');
+    const text = document.getElementById('bls-progress-text');
+    const importButton = document.getElementById('bls-import-button');
+    if (progressBox) progressBox.hidden = false;
+    if (importButton) importButton.disabled = true;
+    try {
+      const result = await window.MampfoBLS.importFile(file, info => {
+        if (fill) fill.style.width = `${Math.max(2, Math.min(100, Number(info.percent || 0)))}%`;
+        if (text) text.textContent = info.message || 'BLS wird verarbeitet …';
+      });
+      state.blsSearch = '';
+      showToast(`${Number(result.count || 0).toLocaleString('de-DE')} BLS-Lebensmittel importiert.`);
+      renderAddTabContent();
+    } catch (error) {
+      if (text) text.textContent = error.message || 'BLS-Import fehlgeschlagen.';
+      if (fill) fill.style.width = '0%';
+      if (importButton) importButton.disabled = false;
+      showToast('BLS-Import fehlgeschlagen.');
+    }
+  }
+
+  async function runBlsSearch(query) {
+    const list = document.getElementById('bls-result-list');
+    const caption = document.getElementById('bls-search-caption');
+    if (!list || state.foodLibrarySource !== 'bls') return;
+    const trimmed = String(query || '').trim();
+    if (trimmed.length < 2) {
+      list.innerHTML = blsSearchHint();
+      if (caption) caption.textContent = 'Suche nach mindestens zwei Zeichen · Werte pro 100 g essbarem Anteil';
+      return;
+    }
+    list.innerHTML = `<div class="bls-loading"><span class="bls-spinner"></span><span>Suche …</span></div>`;
+    try {
+      const results = await window.MampfoBLS.search(trimmed, 40);
+      if (state.blsSearch !== query || state.foodLibrarySource !== 'bls') return;
+      if (caption) caption.innerHTML = results.length ? `<strong>${results.length}</strong> Treffer angezeigt · lokal auf diesem Gerät` : 'Keine passenden BLS-Lebensmittel gefunden';
+      list.innerHTML = blsResultMarkup(results, trimmed);
+      list.querySelectorAll('[data-bls-code]').forEach(btn => btn.onclick = () => showBlsFoodDetail(btn.dataset.blsCode));
+    } catch (error) {
+      list.innerHTML = `<div class="mini-empty compact"><div class="mini-empty-icon">!</div><h3>Suche nicht möglich</h3><p>${esc(error.message || 'Die lokale BLS-Datenbank konnte nicht gelesen werden.')}</p></div>`;
+    }
+  }
+
+  function blsResultMarkup(results, query) {
+    if (!results.length) return `<div class="mini-empty compact"><div class="mini-empty-icon">${icon('search')}</div><h3>Keine Treffer</h3><p>Für „${esc(query)}“ wurde im BLS 4.0 nichts gefunden.</p></div>`;
+    return results.map(food => `<button type="button" class="bls-result-card" data-bls-code="${esc(food.code)}">
+      <span class="bls-result-icon">${icon('database')}</span>
+      <span class="bls-result-copy"><strong>${esc(food.name)}</strong><small>${esc(food.code)} · ${fmtNullable(food.calories, 0, 'kcal')} · ${fmtNullable(food.protein, 1, 'g Protein')}</small><span>${food.group ? esc(food.group) : 'BLS 4.0'}</span></span>
+      <span class="chev">›</span>
+    </button>`).join('');
+  }
+
+  function fmtNullable(value, digits, suffix) {
+    return value == null ? '–' : `${fmt(value, digits)} ${suffix}`;
+  }
+
+  async function showBlsFoodDetail(code) {
+    const foods = await window.MampfoBLS.allFoods();
+    const food = foods.find(item => item.code === code);
+    if (!food) return showToast('BLS-Lebensmittel nicht gefunden.');
+    const existing = state.savedFoods.find(item => item.source === 'bls' && item.sourceId === food.code)
+      || state.savedFoods.find(item => normalizeName(item.name) === normalizeName(food.name));
+    modalRoot.innerHTML = `<div class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="bls-detail-title"><div class="modal bls-detail-modal">
+      <div class="modal-icon sage">${icon('database')}</div>
+      <h2 id="bls-detail-title">${esc(food.name)}</h2>
+      <p class="bls-detail-meta">BLS-Code ${esc(food.code)}${food.group ? ` · ${esc(food.group)}` : ''}</p>
+      <div class="bls-nutrient-grid">
+        <div><small>Kalorien</small><strong>${fmtNullable(food.calories, 0, 'kcal')}</strong></div>
+        <div><small>Protein</small><strong>${fmtNullable(food.protein, 1, 'g')}</strong></div>
+        <div><small>Ballaststoffe</small><strong>${fmtNullable(food.fiber, 1, 'g')}</strong></div>
+        <div><small>Fett</small><strong>${fmtNullable(food.fat, 1, 'g')}</strong></div>
+        <div><small>Kohlenhydrate</small><strong>${fmtNullable(food.carbohydrates, 1, 'g')}</strong></div>
+      </div>
+      <p class="bls-reference-note">Alle Werte beziehen sich auf <strong>100 g essbaren Anteil</strong>. Nach der Übernahme kannst du die Bezugsmenge wie bei jedem anderen Mampfo-Lebensmittel ändern.</p>
+      ${existing ? `<div class="bls-existing-note">${icon('save')} Dieses Lebensmittel ist bereits in deiner persönlichen Datenbank gespeichert.</div>` : food.calories == null ? `<div class="bls-existing-note">Für diesen BLS-Eintrag fehlt ein Energie-Wert. Mampfo übernimmt fehlende Werte nicht als 0.</div>` : ''}
+      <div class="modal-actions">
+        ${existing ? `<button class="primary-button" id="bls-open-existing">Gespeichertes Lebensmittel öffnen</button>` : food.calories == null ? `<button class="primary-button" type="button" disabled>Übernahme nicht möglich</button>` : `<button class="primary-button" id="bls-save-food">In meine Lebensmittel übernehmen</button>`}
+        <button class="secondary-button" id="bls-detail-close">Abbrechen</button>
+      </div>
+      ${blsAttributionMarkup()}
+    </div></div>`;
+    document.getElementById('bls-detail-close').onclick = () => { modalRoot.innerHTML = ''; };
+    if (existing) {
+      document.getElementById('bls-open-existing').onclick = () => {
+        modalRoot.innerHTML = '';
+        setView('foodEdit', { editingFoodId: existing.id, foodEditOrigin: 'add' });
+      };
+    } else {
+      document.getElementById('bls-save-food').onclick = () => saveBlsFood(food);
+    }
+  }
+
+  function saveBlsFood(food) {
+    if (food.calories == null) return showToast('Für dieses BLS-Lebensmittel fehlt der Energie-Wert.');
+    const now = new Date().toISOString();
+    state.savedFoods.push({
+      id: uuid(),
+      name: food.name,
+      baseAmount: 100,
+      baseUnit: 'g',
+      calories: food.calories,
+      protein: food.protein ?? null,
+      fiber: food.fiber ?? null,
+      fat: food.fat ?? null,
+      carbohydrates: food.carbohydrates ?? null,
+      favorite: false,
+      usageCount: 0,
+      lastUsedAt: null,
+      source: 'bls',
+      sourceId: food.code,
+      sourceVersion: '4.0',
+      sourceAttribution: window.MampfoBLS.attribution,
+      createdAt: now,
+      updatedAt: now
+    });
+    persist();
+    modalRoot.innerHTML = '';
+    showToast('BLS-Lebensmittel gespeichert.');
+    renderAddTabContent();
+  }
+
+  function showBlsManageModal(meta) {
+    modalRoot.innerHTML = `<div class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="bls-manage-title"><div class="modal">
+      <div class="modal-icon sage">${icon('database')}</div><h2 id="bls-manage-title">BLS 4.0 verwalten</h2>
+      <p>${Number(meta.count || 0).toLocaleString('de-DE')} Lebensmittel · importiert ${esc(formatBlsImportDate(meta.importedAt))}</p>
+      <p class="modal-note">Ein Neuimport ersetzt nur die lokale BLS-Referenzdatenbank. Bereits in „Meine Lebensmittel“ übernommene BLS-Einträge bleiben unverändert.</p>
+      <div class="modal-actions">
+        <button class="primary-button" id="bls-reimport">BLS-Datei neu importieren</button>
+        <button class="danger-soft-button" id="bls-clear">Lokale BLS-Daten entfernen</button>
+        <button class="secondary-button" id="bls-manage-close">Abbrechen</button>
+      </div>
+      <input id="bls-reimport-input" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
+    </div></div>`;
+    document.getElementById('bls-manage-close').onclick = () => { modalRoot.innerHTML = ''; };
+    document.getElementById('bls-reimport').onclick = () => document.getElementById('bls-reimport-input').click();
+    document.getElementById('bls-reimport-input').addEventListener('change', async event => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      modalRoot.innerHTML = '';
+      renderAddTabContent();
+      const input = document.getElementById('bls-file-input');
+      if (input) {
+        const dt = new DataTransfer(); dt.items.add(file); input.files = dt.files; input.dispatchEvent(new Event('change'));
+      } else {
+        try {
+          await window.MampfoBLS.importFile(file, () => {});
+          state.blsSearch = '';
+          showToast('BLS 4.0 aktualisiert.');
+          renderAddTabContent();
+        } catch (error) { showToast(error.message || 'BLS-Import fehlgeschlagen.'); }
+      }
+    });
+    document.getElementById('bls-clear').onclick = async () => {
+      await window.MampfoBLS.clear();
+      state.blsSearch = '';
+      modalRoot.innerHTML = '';
+      showToast('Lokale BLS-Daten entfernt.');
+      renderAddTabContent();
+    };
   }
 
   function renderFoodManager() {
@@ -2124,7 +2376,7 @@
     if (!foods.length) return `<div class="mini-empty compact"><div class="mini-empty-icon">${icon('search')}</div><h3>Keine Treffer</h3><p>Für diese Suche wurde kein gespeichertes Lebensmittel gefunden.</p></div>`;
     return foods.map(food => `<article class="manager-food-card">
       <button class="manager-food-main" data-edit-food="${esc(food.id)}">
-        <span class="manager-food-title"><strong>${esc(food.name)}</strong><small>${esc(amountLabel(food.baseAmount || 1, food.baseUnit || 'portion'))} · ${fmt(food.calories, 0)} kcal${food.protein != null ? ` · ${fmt(food.protein)} g Protein` : ''}${food.fiber != null ? ` · ${fmt(food.fiber)} g Ballaststoffe` : ''}</small></span>
+        <span class="manager-food-title"><strong>${esc(food.name)}</strong><small>${esc(amountLabel(food.baseAmount || 1, food.baseUnit || 'portion'))} · ${fmt(food.calories, 0)} kcal${food.protein != null ? ` · ${fmt(food.protein)} g Protein` : ''}${food.fiber != null ? ` · ${fmt(food.fiber)} g Ballaststoffe` : ''}${food.source === 'bls' ? ' · BLS 4.0' : ''}</small></span>
         <span class="chev">›</span>
       </button>
       <button class="favorite-button ${food.favorite ? 'active' : ''}" data-manager-favorite="${esc(food.id)}" aria-label="Favorit umschalten">${food.favorite ? icon('star') : icon('starEmpty')}</button>
