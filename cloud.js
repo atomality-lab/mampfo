@@ -423,7 +423,7 @@
     return loadJson(backupKey(userId), null);
   }
 
-  function createLocalBackup(userId, reason, snapshot = localData(), appVersion = '0.6.4') {
+  function createLocalBackup(userId, reason, snapshot = localData(), appVersion = '0.7.2') {
     if (!userId) throw new Error('Für die Sicherheitskopie fehlt die Benutzerzuordnung.');
     const backup = {
       schema: 1,
@@ -471,7 +471,7 @@
     localStorage.setItem(STORAGE.dataVersion, String(snapshot.dataVersion || 4));
   }
 
-  function restoreLastBackup(appVersion = '0.6.4') {
+  function restoreLastBackup(appVersion = '0.7.2') {
     const userId = currentUser()?.id;
     if (!userId) throw new Error('Bitte zuerst bei Mampfo Cloud anmelden.');
     const backup = lastBackup(userId);
@@ -547,6 +547,99 @@
 
   function mapRemote(rows) {
     return new Map((rows || []).map(row => [String(row.record_id), row]));
+  }
+
+  function externalFoodIdentity(record) {
+    if (!record || record.deleted) return null;
+    const source = String(record.source || '').toLowerCase();
+    const sourceId = String(record.sourceId || '').trim();
+    if (!sourceId || !['bls', 'openfoodfacts'].includes(source)) return null;
+    return `${source}:${sourceId}`;
+  }
+
+  function externalFoodCore(record) {
+    if (!record) return null;
+    return {
+      source: String(record.source || '').toLowerCase(),
+      sourceId: String(record.sourceId || ''),
+      sourceVersion: record.sourceVersion || null,
+      name: record.name || '',
+      calories: record.calories ?? null,
+      protein: record.protein ?? null,
+      fiber: record.fiber ?? null,
+      fat: record.fat ?? null,
+      carbohydrates: record.carbohydrates ?? null,
+      baseAmount: Number(record.baseAmount || 1),
+      baseUnit: record.baseUnit || 'portion',
+      sourceBrand: record.sourceBrand || null,
+      sourceQuantity: record.sourceQuantity || null
+    };
+  }
+
+  function replaceFoodReferences(snapshot, fromId, toId) {
+    if (String(fromId) === String(toId)) return;
+    (snapshot.entries || []).forEach(entry => {
+      if (String(entry.foodId || '') === String(fromId)) entry.foodId = String(toId);
+    });
+    (snapshot.recipes || []).forEach(recipe => {
+      (recipe.ingredients || []).forEach(ingredient => {
+        if (String(ingredient.foodId || '') === String(fromId)) ingredient.foodId = String(toId);
+      });
+    });
+  }
+
+  function mergeExternalFoodUsage(localFood, remoteFood, canonicalId) {
+    const dates = [localFood?.lastUsedAt, remoteFood?.lastUsedAt].filter(Boolean).sort();
+    const created = [localFood?.createdAt, remoteFood?.createdAt].filter(Boolean).sort();
+    const updated = [localFood?.updatedAt, remoteFood?.updatedAt].filter(Boolean).sort();
+    return {
+      ...deepClone(remoteFood || {}),
+      id: String(canonicalId),
+      favorite: Boolean(localFood?.favorite || remoteFood?.favorite),
+      usageCount: Math.max(Number(localFood?.usageCount || 0), Number(remoteFood?.usageCount || 0)),
+      lastUsedAt: dates.length ? dates[dates.length - 1] : null,
+      createdAt: created.length ? created[0] : (remoteFood?.createdAt || localFood?.createdAt || new Date().toISOString()),
+      updatedAt: updated.length ? updated[updated.length - 1] : (remoteFood?.updatedAt || localFood?.updatedAt || new Date().toISOString())
+    };
+  }
+
+  function canonicalizeExternalFoodIds(localSnapshot, remoteFoodRows, baseline) {
+    const remoteByIdentity = new Map();
+    for (const row of remoteFoodRows || []) {
+      if (row.deleted_at) continue;
+      const identity = externalFoodIdentity(row.payload);
+      if (identity && !remoteByIdentity.has(identity)) remoteByIdentity.set(identity, row);
+    }
+    let changed = false;
+    const notes = [];
+    const foods = localSnapshot.foods || [];
+    for (let index = foods.length - 1; index >= 0; index -= 1) {
+      const food = foods[index];
+      const oldId = String(food?.id || '');
+      const identity = externalFoodIdentity(food);
+      const remoteRow = identity ? remoteByIdentity.get(identity) : null;
+      if (!remoteRow || !oldId) continue;
+      const canonicalId = String(remoteRow.record_id);
+      if (oldId === canonicalId) continue;
+      // Bereits synchronisierte IDs werden nicht still umgebogen. In diesem Fall
+      // greift weiterhin die normale Konflikt-/Löschlogik.
+      if (baseline.collections.foods?.[oldId]) continue;
+
+      replaceFoodReferences(localSnapshot, oldId, canonicalId);
+      const coreEqual = hashValue(externalFoodCore(food)) === hashValue(externalFoodCore(remoteRow.payload || {}));
+      const existingCanonicalIndex = foods.findIndex((item, i) => i !== index && String(item.id || '') === canonicalId);
+      if (existingCanonicalIndex >= 0) {
+        const existing = foods[existingCanonicalIndex];
+        foods[existingCanonicalIndex] = coreEqual ? mergeExternalFoodUsage(food, existing, canonicalId) : existing;
+        foods.splice(index, 1);
+      } else {
+        foods[index] = coreEqual ? mergeExternalFoodUsage(food, remoteRow.payload || {}, canonicalId) : { ...food, id: canonicalId };
+      }
+      if (coreEqual) baseline.collections.foods[canonicalId] = baselineEntry(stateFromRemoteRow(remoteRow));
+      changed = true;
+      notes.push({ source: food.source, sourceId: food.sourceId, fromId: oldId, toId: canonicalId, coreEqual });
+    }
+    return { changed, notes };
   }
 
   function fastingSessionSemanticHash(record) {
@@ -683,7 +776,7 @@
     }], 'user_id');
   }
 
-  async function initializeCloud(appVersion = '0.6.4') {
+  async function initializeCloud(appVersion = '0.7.2') {
     const user = await getUser();
     if (!user?.id) throw new Error('Die Anmeldung konnte nicht bestätigt werden.');
     const before = await cloudCounts();
@@ -726,7 +819,7 @@
     return await cloudCounts();
   }
 
-  async function performSync(appVersion = '0.6.4', reason = 'manual') {
+  async function performSync(appVersion = '0.7.2', reason = 'manual') {
     const user = await getUser();
     if (!user?.id) throw new Error('Bitte zuerst bei Mampfo Cloud anmelden.');
     const counts = await cloudCounts();
@@ -736,17 +829,23 @@
     }
 
     const remote = await fetchRemoteSnapshot();
-    const local = localData();
+    const originalLocal = localData();
     // Ein einzelner lokaler Rücksprungpunkt schützt vor unerwarteten Cloud-Pulls
     // und vor einem Abbruch mitten im mehrstufigen Geräteabgleich.
-    createLocalBackup(user.id, reason, local, appVersion);
-    const working = deepClone(local);
+    createLocalBackup(user.id, reason, originalLocal, appVersion);
     const baseline = loadBaseline(user.id);
+    const local = deepClone(originalLocal);
+    // Externe Referenzlebensmittel besitzen eine stabile Quell-ID (BLS-Code bzw. Barcode).
+    // Wurde dasselbe Produkt auf zwei Geräten unabhängig übernommen, wird die bereits
+    // vorhandene Cloud-ID als kanonische Mampfo-ID verwendet. Dadurch entstehen beim
+    // Geräteabgleich keine doppelten Pfirsiche, Haferdrinks usw.
+    const externalDedupe = canonicalizeExternalFoodIds(local, remote.foods, baseline);
+    const working = deepClone(local);
     const previousConflicts = new Map(conflicts(user.id).map(item => [item.id, item]));
     const nextConflicts = [];
     let uploaded = 0;
     let downloaded = 0;
-    let changedLocal = false;
+    let changedLocal = externalDedupe.changed;
 
     for (const collection of COLLECTIONS) {
       const localMap = mapLocal(local[collection]);
@@ -898,7 +997,7 @@
     return { uploaded, downloaded, conflicts: nextConflicts.length, changedLocal, lastSyncAt: stamp };
   }
 
-  async function syncNow(appVersion = '0.6.4', options = {}) {
+  async function syncNow(appVersion = '0.7.2', options = {}) {
     if (syncPromise) return syncPromise;
     const reason = options.reason || 'manual';
     const userId = currentUser()?.id;
@@ -920,7 +1019,7 @@
     return syncPromise;
   }
 
-  function scheduleSync(appVersion = '0.6.4', options = {}) {
+  function scheduleSync(appVersion = '0.7.2', options = {}) {
     if (!appReady || !isConfigured() || !currentUser()) return;
     const reason = options.reason || 'automatic';
     if (['local-change', 'backup-restore', 'after-conflict'].includes(reason)) markPending(currentUser()?.id, reason);
@@ -939,7 +1038,7 @@
     }, Math.max(0, delay));
   }
 
-  function onAppReady(appVersion = '0.6.4') {
+  function onAppReady(appVersion = '0.7.2') {
     appReady = true;
     if (!isOnline()) {
       markPending(currentUser()?.id, 'app-start-offline');
@@ -973,7 +1072,7 @@
     return effectiveLocalState(conflict.recordId, map, baseEntry);
   }
 
-  async function resolveConflict(conflictIdentifier, choice, appVersion = '0.6.4') {
+  async function resolveConflict(conflictIdentifier, choice, appVersion = '0.7.2') {
     const user = await getUser();
     if (!user?.id) throw new Error('Bitte zuerst anmelden.');
     const list = conflicts(user.id);

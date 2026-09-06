@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const CFG = window.APP_CONFIG || { appName: 'Mampfo', version: '0.7.1' };
+  const CFG = window.APP_CONFIG || { appName: 'Mampfo', version: '0.7.2' };
   const STORAGE = {
     settings: 'mampfo.settings.v2',
     entries: 'mampfo.entries.v2',
@@ -154,6 +154,10 @@
     foodLibrarySource: 'mine',
     blsSearch: '',
     blsSearchTimer: null,
+    offSearch: '',
+    offResults: [],
+    offSearchMeta: null,
+    offSearching: false,
     recipeDraftIngredients: null,
     recipeDraftForId: null,
     recipeEditorMode: null,
@@ -1622,7 +1626,7 @@
           <label><span>Passwort</span><input id="cloud-password" type="password" autocomplete="current-password" minlength="6" required placeholder="mindestens 6 Zeichen"></label>
           <div class="cloud-actions"><button type="submit" class="primary-button">Anmelden</button><button type="button" class="secondary-button" id="cloud-signup">Konto erstellen</button></div>
         </form>
-        <p class="cloud-footnote">Mampfo bleibt lokal nutzbar. Nach der Anmeldung synchronisiert v0.6.4 deine Geräte weiterhin automatisch und zeigt den Zustand des Abgleichs deutlich an.</p>
+        <p class="cloud-footnote">Mampfo bleibt lokal nutzbar. Nach der Anmeldung synchronisiert Mampfo deine Geräte weiterhin automatisch und zeigt den Zustand des Abgleichs deutlich an.</p>
       </section>`;
     }
 
@@ -1679,7 +1683,7 @@
         <button type="button" class="cloud-logout" id="cloud-logout">Abmelden</button>
       </div>
       <div class="cloud-recovery-note ${backup ? '' : 'muted'}" id="cloud-recovery-note">${esc(backupText)}</div>
-      <p class="cloud-footnote">v0.6.4 ändert die Synchronisationslogik nicht grundlegend, macht ihren Zustand aber sichtbar: ausstehende Änderungen, Konflikte, Offline-Status, letzter erfolgreicher Abgleich und Datentransfer sind direkt nachvollziehbar.</p>
+      <p class="cloud-footnote">Der Geräteabgleich zeigt seinen Zustand sichtbar: ausstehende Änderungen, Konflikte, Offline-Status, letzter erfolgreicher Abgleich und Datentransfer sind direkt nachvollziehbar.</p>
     </section>`;
   }
 
@@ -1913,7 +1917,7 @@
         <div><span>Fastenpläne</span><strong>${counts.fastPlans}</strong></div>
         <div><span>Fastenphasen</span><strong>${counts.fastingSessions}</strong></div>
       </div>
-      <p class="cloud-warning">Vor dem Upload prüft Mampfo die Cloud noch einmal. Ist sie nicht leer, wird der Vorgang abgebrochen. Danach übernimmt v0.6.4 den regulären Geräteabgleich.</p>
+      <p class="cloud-warning">Vor dem Upload prüft Mampfo die Cloud noch einmal. Ist sie nicht leer, wird der Vorgang abgebrochen. Danach übernimmt Mampfo den regulären Geräteabgleich.</p>
       <div class="modal-actions"><button class="primary-button" id="confirm-cloud-init">Jetzt hochladen</button><button class="secondary-button" id="cancel-cloud-init">Abbrechen</button></div>
     </div></div>`;
     document.getElementById('cancel-cloud-init').onclick = () => { modalRoot.innerHTML = ''; };
@@ -2067,7 +2071,7 @@
       <div class="settings-title">☁ Datenaustausch</div>
       ${cloudSettingsMarkup()}
 
-      <div class="settings-note">${icon('rocket')}<br>Ernährung, Rezepte, Fasten und die vollständige Auswertung sind verfügbar. v0.6.4 macht den Geräteabgleich transparenter: Sync-Status, letzter erfolgreicher Abgleich, ausstehende Änderungen, Konflikte und der Gerätename sind direkt sichtbar.</div>
+      <div class="settings-note">${icon('rocket')}<br>BLS 4.0 und Open Food Facts ergänzen jetzt die persönliche Lebensmitteldatenbank. Übernommene Lebensmittel bleiben normale Mampfo-Snapshots und werden über den bestehenden Geräteabgleich synchronisiert.</div>
       <div class="version">${esc(CFG.appName)} · Version ${esc(CFG.version)}</div>
     </main>${bottomNav('')}`;
 
@@ -2087,10 +2091,11 @@
   }
 
   function renderAddFoods(target) {
-    target.innerHTML = `<div class="section-heading food-library-heading"><div><h2>Lebensmittel</h2><p>Eigene Lebensmittel und BLS 4.0 an einem Ort.</p></div>${state.foodLibrarySource === 'mine' ? `<button type="button" class="secondary-button compact-action" id="add-new-food">${icon('plus')} Neu</button>` : ''}</div>
+    target.innerHTML = `<div class="section-heading food-library-heading"><div><h2>Lebensmittel</h2><p>Eigene Lebensmittel, BLS 4.0 und Markenprodukte an einem Ort.</p></div>${state.foodLibrarySource === 'mine' ? `<button type="button" class="secondary-button compact-action" id="add-new-food">${icon('plus')} Neu</button>` : ''}</div>
       <div class="food-source-tabs" role="tablist" aria-label="Lebensmittelquelle">
         <button type="button" class="food-source-tab ${state.foodLibrarySource === 'mine' ? 'active' : ''}" data-food-source="mine">${icon('star')} Meine Lebensmittel</button>
         <button type="button" class="food-source-tab ${state.foodLibrarySource === 'bls' ? 'active' : ''}" data-food-source="bls">${icon('database')} BLS 4.0</button>
+        <button type="button" class="food-source-tab ${state.foodLibrarySource === 'off' ? 'active' : ''}" data-food-source="off">${icon('food')} Produkte</button>
       </div>
       <div id="food-source-content"></div>`;
 
@@ -2101,6 +2106,7 @@
       };
     });
     if (state.foodLibrarySource === 'bls') renderBlsFoodsPanel(document.getElementById('food-source-content'));
+    else if (state.foodLibrarySource === 'off') renderOffFoodsPanel(document.getElementById('food-source-content'));
     else renderMyFoodsPanel(document.getElementById('food-source-content'));
     document.getElementById('add-new-food')?.addEventListener('click', () => setView('foodEdit', { editingFoodId: '__new__', foodEditOrigin: 'add' }));
   }
@@ -2353,6 +2359,146 @@
     };
   }
 
+  function offAttributionMarkup() {
+    return `<div class="off-attribution"><strong>Open Food Facts · ODbL</strong><span>Produktdaten aus Open Food Facts. Die Angaben werden von Herstellern und Community-Mitgliedern gepflegt und können unvollständig oder veraltet sein.</span></div>`;
+  }
+
+  function offSearchHint() {
+    return `<div class="mini-empty compact off-search-hint"><div class="mini-empty-icon">${icon('search')}</div><h3>Markenprodukte suchen</h3><p>Zum Beispiel „Alpro Soja“, „Oatly Barista“ oder „High Protein Pudding“. Die Suche startet erst nach Klick auf „Suchen“.</p></div>`;
+  }
+
+  function renderOffFoodsPanel(target) {
+    if (!target) return;
+    if (!window.MampfoOFF) {
+      target.innerHTML = `<div class="mini-empty compact"><div class="mini-empty-icon">!</div><h3>Open-Food-Facts-Modul fehlt</h3><p>Die Datei off.js konnte nicht geladen werden.</p></div>`;
+      return;
+    }
+    const online = navigator.onLine !== false;
+    target.innerHTML = `<section class="off-status-card">
+        <div class="off-status-icon">${icon('food')}</div>
+        <div><small>Online-Produktdatenbank</small><strong>Open Food Facts</strong><span>${online ? 'Markenprodukte und Barcodes · Internet erforderlich' : 'Offline · Produktsuche derzeit nicht verfügbar'}</span></div>
+      </section>
+      <form id="off-search-form" class="off-search-form">
+        <div class="manager-search"><span>${icon('search')}</span><input id="off-search" type="search" placeholder="Produkt oder Marke suchen" autocomplete="off" value="${esc(state.offSearch)}"></div>
+        <button type="submit" class="primary-button off-search-button" ${online ? '' : 'disabled'}>${icon('search')} Suchen</button>
+      </form>
+      <div id="off-search-caption" class="manager-caption">Bewusste Suche statt Suche bei jedem Tastendruck · schont das öffentliche API-Limit</div>
+      <section id="off-result-list" class="off-result-list">${state.offSearching ? `<div class="bls-loading"><span class="bls-spinner"></span><span>Open Food Facts wird durchsucht …</span></div>` : offResultMarkup(state.offResults, state.offSearchMeta)}</section>
+      ${offAttributionMarkup()}`;
+    document.getElementById('off-search-form').addEventListener('submit', async event => {
+      event.preventDefault();
+      state.offSearch = document.getElementById('off-search').value.trim();
+      await runOffSearch(state.offSearch);
+    });
+    bindOffResults(document.getElementById('off-result-list'));
+  }
+
+  async function runOffSearch(query) {
+    const q = String(query || '').trim();
+    const list = document.getElementById('off-result-list');
+    const caption = document.getElementById('off-search-caption');
+    if (!list || state.foodLibrarySource !== 'off') return;
+    if (q.length < 2) {
+      state.offResults = [];
+      state.offSearchMeta = null;
+      list.innerHTML = offSearchHint();
+      if (caption) caption.textContent = 'Bitte mindestens zwei Zeichen eingeben.';
+      return;
+    }
+    state.offSearching = true;
+    list.innerHTML = `<div class="bls-loading"><span class="bls-spinner"></span><span>Open Food Facts wird durchsucht …</span></div>`;
+    try {
+      const result = await window.MampfoOFF.search(q, 1);
+      if (state.foodLibrarySource !== 'off' || state.offSearch !== q) return;
+      state.offResults = result.products || [];
+      state.offSearchMeta = result;
+      if (caption) caption.innerHTML = result.count ? `<strong>${Number(result.count).toLocaleString('de-DE')}</strong> passende Produkte · ${state.offResults.length} angezeigt` : 'Keine passenden Produkte gefunden';
+      list.innerHTML = offResultMarkup(state.offResults, result);
+      bindOffResults(list);
+    } catch (error) {
+      state.offResults = [];
+      state.offSearchMeta = null;
+      if (caption) caption.textContent = 'Produktsuche nicht verfügbar';
+      list.innerHTML = `<div class="mini-empty compact"><div class="mini-empty-icon">!</div><h3>Suche nicht möglich</h3><p>${esc(error.message || 'Open Food Facts konnte nicht abgefragt werden.')}</p></div>`;
+    } finally {
+      state.offSearching = false;
+    }
+  }
+
+  function offResultMarkup(products, meta) {
+    if (!state.offSearch || state.offSearch.trim().length < 2) return offSearchHint();
+    if (!products?.length) return `<div class="mini-empty compact"><div class="mini-empty-icon">${icon('search')}</div><h3>Keine Treffer</h3><p>Für „${esc(state.offSearch)}“ wurden keine geeigneten Produkte gefunden.</p></div>`;
+    return products.map(product => {
+      const existing = state.savedFoods.find(item => item.source === 'openfoodfacts' && String(item.sourceId || '') === String(product.code));
+      return `<button type="button" class="off-result-card ${existing ? 'already-saved' : ''}" data-off-code="${esc(product.code)}">
+        <span class="off-result-icon">${icon('food')}</span>
+        <span class="off-result-copy"><strong>${esc(product.name)}</strong><small>${product.brands ? `${esc(product.brands)} · ` : ''}${esc(product.code)} · ${fmtNullable(product.calories, 0, 'kcal')} · ${fmtNullable(product.protein, 1, 'g Protein')}</small><span>${product.quantity ? esc(product.quantity) : `Werte pro 100 ${product.baseUnit}`}${existing ? ' · bereits gespeichert' : ''}</span></span>
+        <span class="chev">›</span>
+      </button>`;
+    }).join('');
+  }
+
+  function bindOffResults(root) {
+    root.querySelectorAll('[data-off-code]').forEach(btn => btn.onclick = () => showOffProductDetail(btn.dataset.offCode));
+  }
+
+  function showOffProductDetail(code) {
+    const product = state.offResults.find(item => String(item.code) === String(code));
+    if (!product) return showToast('Produkt nicht mehr in der Trefferliste.');
+    const existing = state.savedFoods.find(item => item.source === 'openfoodfacts' && String(item.sourceId || '') === String(product.code));
+    const baseLabel = `100 ${product.baseUnit}`;
+    modalRoot.innerHTML = `<div class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="off-detail-title"><div class="modal off-detail-modal">
+      <div class="modal-icon apricot">${icon('food')}</div>
+      <h2 id="off-detail-title">${esc(product.name)}</h2>
+      <p class="off-detail-meta">${product.brands ? `${esc(product.brands)} · ` : ''}Barcode ${esc(product.code)}${product.quantity ? ` · ${esc(product.quantity)}` : ''}</p>
+      <div class="bls-nutrient-grid">
+        <div><small>Kalorien</small><strong>${fmtNullable(product.calories, 0, 'kcal')}</strong></div>
+        <div><small>Protein</small><strong>${fmtNullable(product.protein, 1, 'g')}</strong></div>
+        <div><small>Ballaststoffe</small><strong>${fmtNullable(product.fiber, 1, 'g')}</strong></div>
+        <div><small>Fett</small><strong>${fmtNullable(product.fat, 1, 'g')}</strong></div>
+        <div><small>Kohlenhydrate</small><strong>${fmtNullable(product.carbohydrates, 1, 'g')}</strong></div>
+      </div>
+      <p class="bls-reference-note">Die normalisierten Angaben beziehen sich auf <strong>${baseLabel}</strong>. Nach der Übernahme wird daraus ein normales persönliches Mampfo-Lebensmittel.</p>
+      ${existing ? `<div class="bls-existing-note">${icon('save')} Dieses Produkt ist bereits in deiner persönlichen Datenbank gespeichert.</div>` : product.calories == null ? `<div class="bls-existing-note">Für dieses Produkt fehlt ein Energie-Wert. Mampfo übernimmt fehlende Werte nicht als 0.</div>` : ''}
+      <div class="form-actions">
+        ${existing ? `<button class="primary-button" id="off-open-existing">Gespeichertes Lebensmittel öffnen</button>` : product.calories == null ? `<button class="primary-button" type="button" disabled>Übernahme nicht möglich</button>` : `<button class="primary-button" id="off-save-food">In meine Lebensmittel übernehmen</button>`}
+        <button class="secondary-button" id="off-detail-close">Abbrechen</button>
+      </div>
+      ${offAttributionMarkup()}
+    </div></div>`;
+    document.getElementById('off-detail-close').onclick = () => { modalRoot.innerHTML = ''; };
+    if (existing) document.getElementById('off-open-existing').onclick = () => {
+      modalRoot.innerHTML = '';
+      setView('foodEdit', { editingFoodId: existing.id, foodEditOrigin: 'add' });
+    };
+    else document.getElementById('off-save-food')?.addEventListener('click', () => saveOffProduct(product));
+  }
+
+  function saveOffProduct(product) {
+    if (product.calories == null) return showToast('Für dieses Produkt fehlt der Energie-Wert.');
+    const existing = state.savedFoods.find(item => item.source === 'openfoodfacts' && String(item.sourceId || '') === String(product.code));
+    if (existing) {
+      modalRoot.innerHTML = '';
+      return setView('foodEdit', { editingFoodId: existing.id, foodEditOrigin: 'add' });
+    }
+    const now = new Date().toISOString();
+    const food = {
+      id: uuid(), name: product.name, calories: product.calories,
+      protein: product.protein, fiber: product.fiber, fat: product.fat, carbohydrates: product.carbohydrates,
+      baseAmount: 100, baseUnit: product.baseUnit || 'g', favorite: false, usageCount: 0, lastUsedAt: null,
+      source: 'openfoodfacts', sourceId: String(product.code), sourceVersion: 'live',
+      sourceAttribution: window.MampfoOFF?.attribution || 'Open Food Facts',
+      sourceBrand: product.brands || null, sourceQuantity: product.quantity || null,
+      createdAt: now, updatedAt: now
+    };
+    state.savedFoods.push(food);
+    persist();
+    modalRoot.innerHTML = '';
+    showToast('Open-Food-Facts-Produkt gespeichert.');
+    state.foodLibrarySource = 'mine';
+    renderAddTabContent();
+  }
+
   function renderFoodManager() {
     const sorted = [...state.savedFoods].sort((a, b) => a.name.localeCompare(b.name, 'de'));
     app.innerHTML = `<main class="page">
@@ -2376,7 +2522,7 @@
     if (!foods.length) return `<div class="mini-empty compact"><div class="mini-empty-icon">${icon('search')}</div><h3>Keine Treffer</h3><p>Für diese Suche wurde kein gespeichertes Lebensmittel gefunden.</p></div>`;
     return foods.map(food => `<article class="manager-food-card">
       <button class="manager-food-main" data-edit-food="${esc(food.id)}">
-        <span class="manager-food-title"><strong>${esc(food.name)}</strong><small>${esc(amountLabel(food.baseAmount || 1, food.baseUnit || 'portion'))} · ${fmt(food.calories, 0)} kcal${food.protein != null ? ` · ${fmt(food.protein)} g Protein` : ''}${food.fiber != null ? ` · ${fmt(food.fiber)} g Ballaststoffe` : ''}${food.source === 'bls' ? ' · BLS 4.0' : ''}</small></span>
+        <span class="manager-food-title"><strong>${esc(food.name)}</strong><small>${esc(amountLabel(food.baseAmount || 1, food.baseUnit || 'portion'))} · ${fmt(food.calories, 0)} kcal${food.protein != null ? ` · ${fmt(food.protein)} g Protein` : ''}${food.fiber != null ? ` · ${fmt(food.fiber)} g Ballaststoffe` : ''}${food.source === 'bls' ? ' · BLS 4.0' : food.source === 'openfoodfacts' ? ' · Open Food Facts' : ''}</small></span>
         <span class="chev">›</span>
       </button>
       <button class="favorite-button ${food.favorite ? 'active' : ''}" data-manager-favorite="${esc(food.id)}" aria-label="Favorit umschalten">${food.favorite ? icon('star') : icon('starEmpty')}</button>

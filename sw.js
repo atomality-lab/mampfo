@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mampfo-v0.7.1';
+const CACHE_NAME = 'mampfo-v0.7.2';
 const ASSETS = [
   './',
   './index.html',
@@ -7,6 +7,7 @@ const ASSETS = [
   './supabase-config.js',
   './cloud.js',
   './bls.js',
+  './off.js',
   './app.js',
   './manifest.webmanifest',
   './icons/icon-192.png',

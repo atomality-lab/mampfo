@@ -1,6 +1,40 @@
-# Mampfo v0.7.1
+# Mampfo v0.7.2
 
 Mampfo ist eine persönliche **Local-first-PWA** zum Ernährungstracking. Die App funktioniert weiterhin vollständig mit lokalen Daten und kann angemeldete Geräte über die persönliche Supabase-Cloud abgleichen.
+
+## Neu in v0.7.2 – Open Food Facts & Quellen-Deduplizierung
+
+Mampfo ergänzt die lokale BLS-Referenz um **Open Food Facts** für konkrete Marken- und Handelsprodukte. Unter **Erfassen → Lebensmittel** stehen jetzt drei Quellen bereit:
+
+- **Meine Lebensmittel** – persönliche, synchronisierte Mampfo-Lebensmittel
+- **BLS 4.0** – lokal importierte deutsche Referenzlebensmittel
+- **Produkte** – Online-Suche in Open Food Facts
+
+### Open-Food-Facts-Suche
+
+Die Produktsuche wird bewusst erst über **Suchen** gestartet und nicht bei jedem Tastendruck. Mampfo zeigt bis zu 20 Treffer mit Produktname, Marke, Barcode, Packungsgröße sowie den für Mampfo relevanten Nährwerten.
+
+Verwendet werden die normalisierten Werte pro **100 g bzw. bei Flüssigkeiten pro 100 ml**:
+
+- Kalorien
+- Protein
+- Ballaststoffe
+- Fett
+- Kohlenhydrate
+
+Fehlende Werte bleiben wie in der restlichen App offen. Produkte ohne Energieangabe können nicht direkt übernommen werden.
+
+Mit **In meine Lebensmittel übernehmen** entsteht ein normaler persönlicher Mampfo-Snapshot. Er enthält den Barcode als `sourceId`, wird über Supabase synchronisiert und kann danach wie jedes andere Lebensmittel bearbeitet, favorisiert, in Rezepten genutzt und ins Tagebuch eingetragen werden. Die Open-Food-Facts-Suche selbst benötigt Internet.
+
+### Doppelte externe Lebensmittel verhindern
+
+BLS-Code und Open-Food-Facts-Barcode werden beim Geräteabgleich als stabile Quellenkennungen verwendet. Wird dasselbe BLS-/OFF-Lebensmittel auf zwei Geräten unabhängig übernommen, vereinheitlicht Mampfo die interne Lebensmittel-ID beim nächsten Sync und aktualisiert dazugehörige Tagebuch- und Rezeptverknüpfungen.
+
+Sind die eigentlichen Lebensmittelwerte auf beiden Geräten unterschiedlich verändert worden, werden sie weiterhin nicht still überschrieben; die normale Konfliktlogik bleibt zuständig.
+
+### Cloud / Update
+
+Für v0.7.2 ist **keine Supabase-SQL-Änderung** erforderlich. Wie gewünscht enthält das Update weder `supabase-config.js` noch `SUPABASE_SETUP.sql`.
 
 ## Neu in v0.7.1 – BLS 4.0
 

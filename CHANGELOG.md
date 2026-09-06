@@ -1,5 +1,29 @@
 # Changelog
 
+## v0.7.2 – Open Food Facts & externe Quellen-Deduplizierung
+
+### Neu
+- dritte Lebensmittelquelle **Produkte** unter **Erfassen → Lebensmittel**
+- Online-Volltextsuche über Open Food Facts / Search-a-licious
+- bewusster Suchbutton statt Search-as-you-type
+- bis zu 20 Produktresultate mit Name, Marke, Barcode, Packungsgröße und Mampfo-Nährwerten
+- normalisierte Nährwerte pro 100 g bzw. 100 ml
+- Open-Food-Facts-Produkte können als persönliche Mampfo-Lebensmittel übernommen werden
+- Barcode wird als stabile `sourceId` gespeichert und bereitet v0.8 Barcode-Scan vor
+- Quellenhinweis für Open Food Facts direkt in der Produktoberfläche
+
+### Sync / Deduplizierung
+- gleiche externe Lebensmittel werden anhand `source + sourceId` erkannt
+- unterstützt BLS-Code und Open-Food-Facts-Barcode
+- bei unabhängig übernommenen identischen Lebensmitteln wird die bestehende Cloud-ID als gemeinsame Mampfo-ID verwendet
+- Tagebucheinträge und Rezeptzutaten werden bei dieser Vereinheitlichung auf die gemeinsame Lebensmittel-ID umgebogen
+- tatsächliche inhaltliche Unterschiede bleiben konfliktpflichtig und werden nicht still überschrieben
+
+### Update
+- keine Änderung am Supabase-Schema erforderlich
+- `supabase-config.js` und `SUPABASE_SETUP.sql` nicht im Update-Paket
+- Service-Worker-Cache auf v0.7.2 aktualisiert
+
 ## v0.7.1 – BLS 4.0 Lebensmitteldatenbank
 
 ### Neu
