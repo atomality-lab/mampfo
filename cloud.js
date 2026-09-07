@@ -481,7 +481,7 @@
     return loadJson(backupKey(userId), null);
   }
 
-  function createLocalBackup(userId, reason, snapshot = localData(), appVersion = '0.7.2.2') {
+  function createLocalBackup(userId, reason, snapshot = localData(), appVersion = '0.7.2.3') {
     if (!userId) throw new Error('Für die Sicherheitskopie fehlt die Benutzerzuordnung.');
     const backup = {
       schema: 1,
@@ -529,7 +529,7 @@
     localStorage.setItem(STORAGE.dataVersion, String(snapshot.dataVersion || 4));
   }
 
-  function restoreLastBackup(appVersion = '0.7.2.2') {
+  function restoreLastBackup(appVersion = '0.7.2.3') {
     const userId = currentUser()?.id;
     if (!userId) throw new Error('Bitte zuerst bei Mampfo Cloud anmelden.');
     const backup = lastBackup(userId);
@@ -715,7 +715,7 @@
 
   function effectiveLocalState(id, localMap, baseEntry, deletion = null) {
     if (localMap.has(id)) return stateFromRecord(localMap.get(id));
-    // v0.7.2.2: Fehlen allein ist keine Löschung mehr. Nur eine explizite
+    // v0.7.2.3: Fehlen allein ist keine Löschung mehr. Nur eine explizite
     // Löschmarke darf einen Datensatz in der Cloud als gelöscht markieren.
     if (deletion) return deletedState(deletion.payload || null);
     if (baseEntry) return stateFromBaseline(baseEntry);
@@ -841,7 +841,7 @@
     }], 'user_id');
   }
 
-  async function initializeCloud(appVersion = '0.7.2.2') {
+  async function initializeCloud(appVersion = '0.7.2.3') {
     const user = await getUser();
     if (!user?.id) throw new Error('Die Anmeldung konnte nicht bestätigt werden.');
     const before = await cloudCounts();
@@ -884,7 +884,7 @@
     return await cloudCounts();
   }
 
-  async function performSync(appVersion = '0.7.2.2', reason = 'manual') {
+  async function performSync(appVersion = '0.7.2.3', reason = 'manual') {
     const user = await getUser();
     if (!user?.id) throw new Error('Bitte zuerst bei Mampfo Cloud anmelden.');
     const counts = await cloudCounts();
@@ -1082,7 +1082,7 @@
     return { uploaded, downloaded, conflicts: nextConflicts.length, changedLocal, lastSyncAt: stamp };
   }
 
-  async function syncNow(appVersion = '0.7.2.2', options = {}) {
+  async function syncNow(appVersion = '0.7.2.3', options = {}) {
     if (syncPromise) return syncPromise;
     const reason = options.reason || 'manual';
     const userId = currentUser()?.id;
@@ -1104,7 +1104,7 @@
     return syncPromise;
   }
 
-  function scheduleSync(appVersion = '0.7.2.2', options = {}) {
+  function scheduleSync(appVersion = '0.7.2.3', options = {}) {
     if (!appReady || !isConfigured() || !currentUser()) return;
     const reason = options.reason || 'automatic';
     if (['local-change', 'backup-restore', 'after-conflict'].includes(reason)) markPending(currentUser()?.id, reason);
@@ -1123,7 +1123,7 @@
     }, Math.max(0, delay));
   }
 
-  function onAppReady(appVersion = '0.7.2.2') {
+  function onAppReady(appVersion = '0.7.2.3') {
     appReady = true;
     if (!isOnline()) {
       markPending(currentUser()?.id, 'app-start-offline');
@@ -1158,7 +1158,7 @@
     return effectiveLocalState(conflict.recordId, map, baseEntry, deletionMarker(conflict.collection, conflict.recordId, userId));
   }
 
-  async function resolveConflict(conflictIdentifier, choice, appVersion = '0.7.2.2') {
+  async function resolveConflict(conflictIdentifier, choice, appVersion = '0.7.2.3') {
     const user = await getUser();
     if (!user?.id) throw new Error('Bitte zuerst anmelden.');
     const list = conflicts(user.id);
@@ -1208,29 +1208,47 @@
     if (!userId) return false;
     const baseline = loadBaseline(userId);
     if (!baseline.updatedAt) return true;
+
+    // v0.7.2.3: Diese Funktion steuert ausschließlich die Statusanzeige.
+    // Inhaltliche Hash-Unterschiede werden hier bewusst NICHT bewertet:
+    // Ältere Datensätze können beim Laden um harmlose Standardfelder ergänzt
+    // werden (z. B. null/default-Werte), wodurch ihr JSON-Hash abweicht,
+    // obwohl der fachliche Datensatz unverändert ist. Echte lokale Änderungen
+    // setzen über persist()/recordDeletion() ohnehin den persistenten pending-Status.
+    // Für die zusätzliche Sicherheitsprüfung reichen daher strukturelle
+    // Abweichungen: neue/fehlende IDs, Tombstones und explizite Löschmarken.
     const snapshot = localData();
     const deletions = loadDeletions(userId);
 
     for (const collection of COLLECTIONS) {
       const localMap = mapLocal(snapshot[collection]);
       const baseMap = baseline.collections[collection] || {};
-      const deletionIds = Object.keys(deletions?.collections?.[collection] || {});
-      const ids = new Set([...localMap.keys(), ...Object.keys(baseMap), ...deletionIds]);
+      const deletionMap = deletions?.collections?.[collection] || {};
+      const ids = new Set([...localMap.keys(), ...Object.keys(baseMap), ...Object.keys(deletionMap)]);
+
       for (const id of ids) {
+        const localRecord = localMap.get(id) || null;
         const baseEntry = baseMap[id] || null;
-        const deletion = deletions?.collections?.[collection]?.[id] || null;
-        // Ein aktiver Baseline-Datensatz, der physisch lokal fehlt und nicht bewusst
-        // gelöscht wurde, ist ebenfalls ein Sync-/Reparaturbedarf.
-        if (baseEntry && !baseEntry.deleted && !localMap.has(id) && !deletion) return true;
-        const localState = effectiveLocalState(id, localMap, baseEntry, deletion);
-        const baseState = stateFromBaseline(baseEntry);
-        if (!statesEqual(localState, baseState)) return true;
+        const deletion = deletionMap[id] || null;
+
+        // Eine ausdrückliche lokale Löschung muss noch übertragen werden.
+        if (deletion) return true;
+
+        // Neuer lokaler Datensatz, der noch nicht Teil der Sync-Basis ist.
+        if (localRecord && !baseEntry) return true;
+
+        // Früher aktiver Datensatz fehlt lokal: Reparatur/Download erforderlich.
+        if (!localRecord && baseEntry && !baseEntry.deleted) return true;
+
+        // Baseline kennt eine Löschung, lokal ist der Datensatz aber wieder aktiv.
+        if (localRecord && baseEntry?.deleted && !localRecord.deleted) return true;
+
+        // Fasten-Sessions können als lokale Tombstones im Array erhalten bleiben.
+        if (localRecord?.deleted && baseEntry && !baseEntry.deleted) return true;
       }
     }
 
-    const settingsState = activeState(settingsPayload(snapshot));
-    const baseSettings = stateFromBaseline(baseline.settings);
-    return !statesEqual(settingsState, baseSettings);
+    return false;
   }
 
   window.MampfoCloud = {

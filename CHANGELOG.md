@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.7.2.3 – Kosmetischer Sync-Status-Patch
+
+### Korrigiert
+- erfolgreiche Synchronisation mit `↑ 0 / ↓ 0` bleibt nun auf **Alles aktuell**, wenn nur interne Standardfelder unterschiedliche Hashes erzeugen
+- Statusprüfung wertet nur noch strukturelle Unterschiede wie neue/fehlende IDs, Tombstones und explizite Löschmarken
+- irreführende Mengenmeldung wird nur noch angezeigt, wenn sich die Datenmengen tatsächlich unterscheiden
+- eigentliche Merge-, Konflikt- und Löschlogik unverändert
+- Service-Worker-Cache auf v0.7.2.3 aktualisiert
+
 ## v0.7.2.2 – Sync-Sicherheits- und Wiederherstellungspatch
 
 ### Korrigiert

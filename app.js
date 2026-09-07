@@ -1896,7 +1896,10 @@
         sync.textContent = latestInfo.inProgress ? 'Synchronisierung läuft …' : '↻ Jetzt synchronisieren';
         init.classList.add('cloud-blocked');
         if ((countMismatch || localSyncNeeded) && !latestInfo.inProgress && !openConflicts.length) {
-          paintStatus(latestInfo, true, openConflicts, { key: 'pending', icon: '…', title: 'Lokaler Stand muss abgeglichen werden', detail: 'Lokale und Cloud-Datenmengen unterscheiden sich. Ein Sync stellt fehlende Cloud-Datensätze wieder her.' });
+          const pendingDetail = countMismatch
+            ? 'Lokale und Cloud-Datenmengen unterscheiden sich. Ein Sync stellt fehlende Cloud-Datensätze wieder her.'
+            : 'Der lokale Bestand weicht strukturell vom letzten Sync-Stand ab. Ein Sync gleicht neue, fehlende oder gelöschte Datensätze ab.';
+          paintStatus(latestInfo, true, openConflicts, { key: 'pending', icon: '…', title: 'Lokaler Stand muss abgeglichen werden', detail: pendingDetail });
         } else {
           paintStatus(latestInfo, true, openConflicts);
         }
