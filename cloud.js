@@ -9,6 +9,7 @@
   const CONFLICT_PREFIX = 'mampfo.syncConflicts.v2.';
   const STATUS_PREFIX = 'mampfo.syncStatus.v2.';
   const BACKUP_PREFIX = 'mampfo.syncBackup.v3.';
+  const DELETION_PREFIX = 'mampfo.syncDeletions.v4.';
   const STORAGE = {
     settings: 'mampfo.settings.v2',
     entries: 'mampfo.entries.v2',
@@ -403,6 +404,63 @@
     saveJson(userKey(CONFLICT_PREFIX, userId), items || []);
   }
 
+  function deletionKey(userId) {
+    return userKey(DELETION_PREFIX, userId);
+  }
+
+  function emptyDeletions(userId) {
+    return {
+      schema: 1,
+      userId,
+      collections: Object.fromEntries(COLLECTIONS.map(key => [key, {}])),
+      updatedAt: null
+    };
+  }
+
+  function loadDeletions(userId = currentUser()?.id) {
+    if (!userId) return null;
+    const saved = loadJson(deletionKey(userId), null);
+    if (!saved || saved.schema !== 1 || saved.userId !== userId) return emptyDeletions(userId);
+    COLLECTIONS.forEach(key => { if (!saved.collections?.[key]) saved.collections[key] = {}; });
+    return saved;
+  }
+
+  function saveDeletions(userId, data) {
+    if (!userId || !data) return null;
+    data.schema = 1;
+    data.userId = userId;
+    data.updatedAt = new Date().toISOString();
+    return saveJson(deletionKey(userId), data);
+  }
+
+  function recordDeletion(collection, recordId, payload = null) {
+    const userId = currentUser()?.id;
+    if (!userId || !COLLECTIONS.includes(collection) || recordId == null) return false;
+    const data = loadDeletions(userId);
+    data.collections[collection][String(recordId)] = {
+      deletedAt: new Date().toISOString(),
+      payload: payload ? deepClone(payload) : null
+    };
+    saveDeletions(userId, data);
+    markPending(userId, 'local-change');
+    return true;
+  }
+
+  function deletionMarker(collection, recordId, userId = currentUser()?.id) {
+    if (!userId || !COLLECTIONS.includes(collection)) return null;
+    const data = loadDeletions(userId);
+    return data?.collections?.[collection]?.[String(recordId)] || null;
+  }
+
+  function clearDeletion(collection, recordId, userId = currentUser()?.id) {
+    if (!userId || !COLLECTIONS.includes(collection)) return false;
+    const data = loadDeletions(userId);
+    if (!data?.collections?.[collection]?.[String(recordId)]) return false;
+    delete data.collections[collection][String(recordId)];
+    saveDeletions(userId, data);
+    return true;
+  }
+
   function syncStatus(userId = currentUser()?.id) {
     if (!userId) return null;
     return loadJson(userKey(STATUS_PREFIX, userId), null);
@@ -423,7 +481,7 @@
     return loadJson(backupKey(userId), null);
   }
 
-  function createLocalBackup(userId, reason, snapshot = localData(), appVersion = '0.7.2') {
+  function createLocalBackup(userId, reason, snapshot = localData(), appVersion = '0.7.2.2') {
     if (!userId) throw new Error('Für die Sicherheitskopie fehlt die Benutzerzuordnung.');
     const backup = {
       schema: 1,
@@ -471,7 +529,7 @@
     localStorage.setItem(STORAGE.dataVersion, String(snapshot.dataVersion || 4));
   }
 
-  function restoreLastBackup(appVersion = '0.7.2') {
+  function restoreLastBackup(appVersion = '0.7.2.2') {
     const userId = currentUser()?.id;
     if (!userId) throw new Error('Bitte zuerst bei Mampfo Cloud anmelden.');
     const backup = lastBackup(userId);
@@ -655,14 +713,21 @@
     });
   }
 
-  function effectiveLocalState(id, localMap, baseEntry) {
+  function effectiveLocalState(id, localMap, baseEntry, deletion = null) {
     if (localMap.has(id)) return stateFromRecord(localMap.get(id));
-    return baseEntry ? deletedState() : absentState();
+    // v0.7.2.2: Fehlen allein ist keine Löschung mehr. Nur eine explizite
+    // Löschmarke darf einen Datensatz in der Cloud als gelöscht markieren.
+    if (deletion) return deletedState(deletion.payload || null);
+    if (baseEntry) return stateFromBaseline(baseEntry);
+    return absentState();
   }
 
   function effectiveRemoteState(id, remoteMap, baseEntry) {
     if (remoteMap.has(id)) return stateFromRemoteRow(remoteMap.get(id));
-    return baseEntry ? deletedState() : absentState();
+    // Cloud-Zeilen werden von Mampfo per deleted_at gelöscht und nicht hart entfernt.
+    // Eine fehlende Zeile wird daher vorsichtshalber nicht als Löschung interpretiert.
+    if (baseEntry) return stateFromBaseline(baseEntry);
+    return absentState();
   }
 
   function collectionArray(snapshot, collection) {
@@ -776,7 +841,7 @@
     }], 'user_id');
   }
 
-  async function initializeCloud(appVersion = '0.7.2') {
+  async function initializeCloud(appVersion = '0.7.2.2') {
     const user = await getUser();
     if (!user?.id) throw new Error('Die Anmeldung konnte nicht bestätigt werden.');
     const before = await cloudCounts();
@@ -819,7 +884,7 @@
     return await cloudCounts();
   }
 
-  async function performSync(appVersion = '0.7.2', reason = 'manual') {
+  async function performSync(appVersion = '0.7.2.2', reason = 'manual') {
     const user = await getUser();
     if (!user?.id) throw new Error('Bitte zuerst bei Mampfo Cloud anmelden.');
     const counts = await cloudCounts();
@@ -834,6 +899,7 @@
     // und vor einem Abbruch mitten im mehrstufigen Geräteabgleich.
     createLocalBackup(user.id, reason, originalLocal, appVersion);
     const baseline = loadBaseline(user.id);
+    const deletions = loadDeletions(user.id);
     const local = deepClone(originalLocal);
     // Externe Referenzlebensmittel besitzen eine stabile Quell-ID (BLS-Code bzw. Barcode).
     // Wurde dasselbe Produkt auf zwei Geräten unabhängig übernommen, wird die bereits
@@ -874,13 +940,16 @@
         }
       }
 
-      const ids = new Set([...localMap.keys(), ...remoteMap.keys(), ...Object.keys(baseMap)]);
+      const deletionIds = Object.keys(deletions?.collections?.[collection] || {});
+      const ids = new Set([...localMap.keys(), ...remoteMap.keys(), ...Object.keys(baseMap), ...deletionIds]);
 
       for (const id of ids) {
         const baseEntry = baseMap[id] || null;
         const baseState = stateFromBaseline(baseEntry);
-        const localState = effectiveLocalState(id, localMap, baseEntry);
+        const explicitDeletion = deletions?.collections?.[collection]?.[String(id)] || null;
+        const localState = effectiveLocalState(id, localMap, baseEntry, explicitDeletion);
         const remoteState = effectiveRemoteState(id, remoteMap, baseEntry);
+        const localPhysicallyMissing = !localMap.has(id);
 
         if (!baseEntry) {
           if (localState.kind === 'absent' && remoteState.kind !== 'absent') {
@@ -902,9 +971,13 @@
           }
           if (statesEqual(localState, remoteState)) {
             markBaselineRecord(baseline, collection, id, localState);
+            if (localState.kind === 'deleted') clearDeletion(collection, id, user.id);
             continue;
           }
-          if (localState.kind === 'deleted' && remoteState.kind === 'absent') continue;
+          if (localState.kind === 'deleted' && remoteState.kind === 'absent') {
+            clearDeletion(collection, id, user.id);
+            continue;
+          }
           if (remoteState.kind === 'deleted' && localState.kind === 'absent') {
             markBaselineRecord(baseline, collection, id, remoteState);
             continue;
@@ -916,11 +989,21 @@
         const localChanged = !statesEqual(localState, baseState);
         const remoteChanged = !statesEqual(remoteState, baseState);
 
-        if (!localChanged && !remoteChanged) continue;
+        if (!localChanged && !remoteChanged) {
+          // Sicherheitsreparatur: Ist der Cloud-Datensatz aktiv, lokal aber ohne
+          // ausdrückliche Löschmarke verschwunden, wird er wiederhergestellt.
+          if (localPhysicallyMissing && !explicitDeletion && remoteState.kind === 'active') {
+            applyStateToSnapshot(working, collection, id, remoteState);
+            downloaded += 1;
+            changedLocal = true;
+          }
+          continue;
+        }
         if (localChanged && !remoteChanged) {
           await pushRecordState(collection, id, localState, user.id, remoteMap.get(id)?.payload || null);
           uploaded += 1;
           markBaselineRecord(baseline, collection, id, localState);
+          if (localState.kind === 'deleted') clearDeletion(collection, id, user.id);
           continue;
         }
         if (!localChanged && remoteChanged) {
@@ -928,10 +1011,12 @@
           downloaded += 1;
           changedLocal = true;
           markBaselineRecord(baseline, collection, id, remoteState);
+          if (remoteState.kind === 'deleted') clearDeletion(collection, id, user.id);
           continue;
         }
         if (statesEqual(localState, remoteState)) {
           markBaselineRecord(baseline, collection, id, localState);
+          if (localState.kind === 'deleted') clearDeletion(collection, id, user.id);
           continue;
         }
         const fresh = makeConflict(collection, id, localState, remoteState, baseEntry);
@@ -997,7 +1082,7 @@
     return { uploaded, downloaded, conflicts: nextConflicts.length, changedLocal, lastSyncAt: stamp };
   }
 
-  async function syncNow(appVersion = '0.7.2', options = {}) {
+  async function syncNow(appVersion = '0.7.2.2', options = {}) {
     if (syncPromise) return syncPromise;
     const reason = options.reason || 'manual';
     const userId = currentUser()?.id;
@@ -1019,7 +1104,7 @@
     return syncPromise;
   }
 
-  function scheduleSync(appVersion = '0.7.2', options = {}) {
+  function scheduleSync(appVersion = '0.7.2.2', options = {}) {
     if (!appReady || !isConfigured() || !currentUser()) return;
     const reason = options.reason || 'automatic';
     if (['local-change', 'backup-restore', 'after-conflict'].includes(reason)) markPending(currentUser()?.id, reason);
@@ -1038,7 +1123,7 @@
     }, Math.max(0, delay));
   }
 
-  function onAppReady(appVersion = '0.7.2') {
+  function onAppReady(appVersion = '0.7.2.2') {
     appReady = true;
     if (!isOnline()) {
       markPending(currentUser()?.id, 'app-start-offline');
@@ -1067,12 +1152,13 @@
     const snapshot = localData();
     if (conflict.collection === 'settings') return activeState(settingsPayload(snapshot));
     const map = mapLocal(snapshot[conflict.collection]);
-    const baseline = loadBaseline(currentUser()?.id || '');
+    const userId = currentUser()?.id || '';
+    const baseline = loadBaseline(userId);
     const baseEntry = baseline.collections?.[conflict.collection]?.[conflict.recordId] || conflict.baseline || null;
-    return effectiveLocalState(conflict.recordId, map, baseEntry);
+    return effectiveLocalState(conflict.recordId, map, baseEntry, deletionMarker(conflict.collection, conflict.recordId, userId));
   }
 
-  async function resolveConflict(conflictIdentifier, choice, appVersion = '0.7.2') {
+  async function resolveConflict(conflictIdentifier, choice, appVersion = '0.7.2.2') {
     const user = await getUser();
     if (!user?.id) throw new Error('Bitte zuerst anmelden.');
     const list = conflicts(user.id);
@@ -1103,7 +1189,12 @@
     }
 
     if (conflict.collection === 'settings') baseline.settings = baselineEntry(finalState);
-    else markBaselineRecord(baseline, conflict.collection, conflict.recordId, finalState);
+    else {
+      markBaselineRecord(baseline, conflict.collection, conflict.recordId, finalState);
+      // Nach einer bewussten Konfliktentscheidung ist eine alte lokale
+      // Löschmarke abgearbeitet und darf den nächsten Sync nicht erneut beeinflussen.
+      clearDeletion(conflict.collection, conflict.recordId, user.id);
+    }
     saveBaseline(user.id, baseline);
     const remaining = list.filter(item => item.id !== conflictIdentifier);
     saveConflicts(user.id, remaining);
@@ -1111,6 +1202,35 @@
     setSyncStatus(user.id, { lastSyncAt: new Date().toISOString(), lastError: null, conflictCount: remaining.length, inProgress: false });
     scheduleSync(appVersion, { delay: 300, reason: 'after-conflict' });
     return { remaining: remaining.length };
+  }
+
+  function localNeedsSync(userId = currentUser()?.id) {
+    if (!userId) return false;
+    const baseline = loadBaseline(userId);
+    if (!baseline.updatedAt) return true;
+    const snapshot = localData();
+    const deletions = loadDeletions(userId);
+
+    for (const collection of COLLECTIONS) {
+      const localMap = mapLocal(snapshot[collection]);
+      const baseMap = baseline.collections[collection] || {};
+      const deletionIds = Object.keys(deletions?.collections?.[collection] || {});
+      const ids = new Set([...localMap.keys(), ...Object.keys(baseMap), ...deletionIds]);
+      for (const id of ids) {
+        const baseEntry = baseMap[id] || null;
+        const deletion = deletions?.collections?.[collection]?.[id] || null;
+        // Ein aktiver Baseline-Datensatz, der physisch lokal fehlt und nicht bewusst
+        // gelöscht wurde, ist ebenfalls ein Sync-/Reparaturbedarf.
+        if (baseEntry && !baseEntry.deleted && !localMap.has(id) && !deletion) return true;
+        const localState = effectiveLocalState(id, localMap, baseEntry, deletion);
+        const baseState = stateFromBaseline(baseEntry);
+        if (!statesEqual(localState, baseState)) return true;
+      }
+    }
+
+    const settingsState = activeState(settingsPayload(snapshot));
+    const baseSettings = stateFromBaseline(baseline.settings);
+    return !statesEqual(settingsState, baseSettings);
   }
 
   window.MampfoCloud = {
@@ -1135,6 +1255,9 @@
     setDeviceLabel,
     isOnline,
     lastBackup,
-    restoreLastBackup
+    restoreLastBackup,
+    recordDeletion,
+    deletionMarker,
+    localNeedsSync
   };
 })();

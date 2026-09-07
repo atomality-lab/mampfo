@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.7.2.2 – Sync-Sicherheits- und Wiederherstellungspatch
+
+### Korrigiert
+- ein lokal fehlender Datensatz gilt nicht mehr automatisch als vom Benutzer gelöscht
+- echte Löschungen werden lokal explizit als Löschmarken gespeichert und nur dann in die Cloud übertragen
+- aktive Cloud-Datensätze, die lokal ohne Löschmarke fehlen, werden beim nächsten Sync wiederhergestellt
+- die Regel gilt für Ernährungseinträge, gespeicherte Lebensmittel, Rezepte und gelöschte Fastenphasen
+- eine bewusste Konfliktentscheidung räumt zugehörige Löschmarken sauber auf
+- die Datenaustausch-Seite meldet eine sichtbare Abweichung der Datenmengen nicht mehr als „Alles aktuell“
+- Service-Worker-Cache auf v0.7.2.2 aktualisiert
+
+### Wiederherstellung bestehender Geräte
+- v0.7.2.2 ist bewusst konservativ: Bei alten Geräten ohne explizite Löschmarken gewinnt ein noch aktiver Cloud-Datensatz gegenüber einem bloß lokal fehlenden Datensatz.
+- Dadurch kann z. B. ein Stand von 29 lokalen gegenüber 36 aktiven Cloud-Ernährungseinträgen auf 36 lokale Einträge repariert werden.
+- Eine vor dem Patch tatsächlich bewusst gelöschte, aber noch aktive Cloud-Zeile kann dadurch einmalig wieder erscheinen und kann anschließend unter v0.7.2.2 erneut sicher gelöscht werden.
+
 ## v0.7.2.1 – Open-Food-Facts-Suche korrigiert
 
 ### Korrigiert

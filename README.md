@@ -1,6 +1,17 @@
-# Mampfo v0.7.2.1
+# Mampfo v0.7.2.2
 
 Mampfo ist eine persönliche **Local-first-PWA** zum Ernährungstracking. Die App funktioniert weiterhin vollständig mit lokalen Daten und kann angemeldete Geräte über die persönliche Supabase-Cloud abgleichen.
+
+## Neu in v0.7.2.2 – Sicherer Geräteabgleich
+
+Dieser Patch korrigiert die Lösch- und Wiederherstellungslogik der Cloud-Synchronisation. Ein Datensatz, der auf einem Gerät lokal fehlt, wird nicht mehr automatisch als bewusst gelöscht interpretiert.
+
+- Nur ein echter Löschvorgang in Mampfo erzeugt eine lokale Löschmarke.
+- Fehlt ein aktiver Cloud-Datensatz lokal ohne solche Marke, lädt Mampfo ihn beim Sync wieder auf das Gerät.
+- Bestehende Cloud-Daten können damit unvollständige lokale Gerätebestände reparieren.
+- Unterschiedliche lokale und Cloud-Datenmengen werden in den Einstellungen nicht mehr fälschlich als vollständig aktuell dargestellt.
+
+Für Geräte, die bereits vor diesem Patch Daten vermissen, ist die Cloud bewusst die sichere Wiederherstellungsquelle, solange der Cloud-Datensatz dort noch aktiv vorhanden ist.
 
 ## Neu in v0.7.2.1 – Produktsuche korrigiert
 

@@ -1540,6 +1540,7 @@
     </div></div>`;
     document.getElementById('cancel-delete').onclick = () => { modalRoot.innerHTML = ''; };
     document.getElementById('confirm-delete').onclick = () => {
+      window.MampfoCloud?.recordDeletion?.('entries', entry.id, entry);
       state.entries = state.entries.filter(e => e.id !== entry.id);
       persist();
       modalRoot.innerHTML = '';
@@ -1636,7 +1637,10 @@
     const last = cloud.syncStatus?.() || {};
     const backup = cloud.lastBackup?.();
     const online = cloud.isOnline?.() ?? navigator.onLine !== false;
-    const descriptor = cloudStatusDescriptor(last, online, conflictCount);
+    const needsSync = cloud.localNeedsSync?.() || false;
+    const descriptor = needsSync && online && !last.inProgress && !conflictCount
+      ? { key: 'pending', icon: '…', title: 'Lokaler Stand muss abgeglichen werden', detail: 'Auf diesem Gerät gibt es lokale Änderungen oder fehlende Datensätze.' }
+      : cloudStatusDescriptor(last, online, conflictCount);
     const lastSuccess = last.lastSyncAt ? formatCloudSyncTime(last.lastSyncAt) : 'noch nie';
     const lastAttempt = last.lastAttemptAt ? formatCloudSyncTime(last.lastAttemptAt) : 'noch nie';
     const backupText = backup?.createdAt ? `Rücksprungpunkt vom ${formatCloudSyncTime(backup.createdAt)}` : 'Noch kein Rücksprungpunkt vorhanden';
@@ -1877,6 +1881,9 @@
       const counts = await cloud.cloudCounts();
       const latestInfo = cloud.syncStatus?.() || {};
       const openConflicts = cloud.conflicts?.() || [];
+      const liveLocal = cloud.localCounts();
+      const countMismatch = ['entries','foods','recipes','fastPlans','fastingSessions'].some(key => Number(liveLocal[key] || 0) !== Number(counts[key] || 0));
+      const localSyncNeeded = cloud.localNeedsSync?.() || false;
       summary.innerHTML = `<span>Cloud</span><strong>${esc(cloudCountsText(counts))}</strong>`;
       if (counts.isEmpty) {
         init.disabled = false;
@@ -1888,7 +1895,11 @@
         sync.disabled = Boolean(latestInfo.inProgress);
         sync.textContent = latestInfo.inProgress ? 'Synchronisierung läuft …' : '↻ Jetzt synchronisieren';
         init.classList.add('cloud-blocked');
-        paintStatus(latestInfo, true, openConflicts);
+        if ((countMismatch || localSyncNeeded) && !latestInfo.inProgress && !openConflicts.length) {
+          paintStatus(latestInfo, true, openConflicts, { key: 'pending', icon: '…', title: 'Lokaler Stand muss abgeglichen werden', detail: 'Lokale und Cloud-Datenmengen unterscheiden sich. Ein Sync stellt fehlende Cloud-Datensätze wieder her.' });
+        } else {
+          paintStatus(latestInfo, true, openConflicts);
+        }
       } else {
         init.disabled = true;
         sync.disabled = true;
@@ -2699,6 +2710,7 @@
     </div></div>`;
     document.getElementById('cancel-food-delete').onclick = () => { modalRoot.innerHTML = ''; };
     document.getElementById('confirm-food-delete').onclick = () => {
+      window.MampfoCloud?.recordDeletion?.('foods', food.id, food);
       state.savedFoods = state.savedFoods.filter(f => f.id !== food.id);
       state.entries.forEach(entry => {
         if (entry.foodId === food.id) entry.foodId = null;
@@ -3283,6 +3295,7 @@
     modalRoot.innerHTML = `<div class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="delete-recipe-title"><div class="modal"><h2 id="delete-recipe-title">Rezept löschen?</h2><p>„${esc(recipe.name)}“ wird aus deinen Rezepten entfernt.<br><br>Bereits vorhandene Ernährungseinträge bleiben erhalten.</p><div class="modal-actions"><button class="danger-button" id="confirm-recipe-delete">Löschen</button><button class="secondary-button" id="cancel-recipe-delete">Abbrechen</button></div></div></div>`;
     document.getElementById('cancel-recipe-delete').onclick = () => { modalRoot.innerHTML = ''; };
     document.getElementById('confirm-recipe-delete').onclick = () => {
+      window.MampfoCloud?.recordDeletion?.('recipes', recipe.id, recipe);
       state.recipes = state.recipes.filter(item => item.id !== recipe.id);
       persist();
       modalRoot.innerHTML = '';
@@ -3956,6 +3969,7 @@
       modalRoot.innerHTML = `<div class="modal-backdrop" role="dialog" aria-modal="true"><div class="modal"><h2>Fastenphase löschen?</h2><p>Diese aufgezeichnete Fastenphase wird aus dem Verlauf entfernt.</p><div class="modal-actions"><button class="danger-button" id="confirm-delete-fast-session">Löschen</button><button class="secondary-button" id="cancel-delete-fast-session">Abbrechen</button></div></div></div>`;
       document.getElementById('cancel-delete-fast-session').onclick = () => { modalRoot.innerHTML = ''; };
       document.getElementById('confirm-delete-fast-session').onclick = () => {
+        window.MampfoCloud?.recordDeletion?.('fastingSessions', session.id, session);
         if (session.cycleKey) session.deleted = true;
         else state.fastingSessions = state.fastingSessions.filter(item => item.id !== session.id);
         persist();
