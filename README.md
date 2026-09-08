@@ -1,6 +1,17 @@
-# Mampfo v0.7.2.6
+# Mampfo v0.7.2.7
 
 Mampfo ist eine persönliche **Local-first-PWA** zum Ernährungstracking. Die App funktioniert weiterhin vollständig mit lokalen Daten und kann angemeldete Geräte über die persönliche Supabase-Cloud abgleichen.
+
+## Neu in v0.7.2.7 – lokale Fasten-Dubletten bereinigen
+
+Dieser Patch behebt einen Altzustand auf einzelnen Geräten, bei dem lokal eine zusätzliche aktive Fastenphase vorhanden war, obwohl die Cloud bereits den bereinigten kanonischen Bestand enthielt.
+
+- fachlich exakt gleiche Fasten-Sessions werden anhand von `cycleKey`, Start, Ende, geplantem Ende, Plan und Ziel erkannt
+- existiert die kanonische aktive Session bereits in der Cloud, wird eine zusätzliche rein lokale UUID entfernt
+- alte Baseline-/Löschmarker der Dublette werden mit aufgeräumt
+- echte unterschiedliche Fastenzeiten bleiben unangetastet und werden weiterhin über die Konfliktlogik behandelt
+- keine Änderung am Supabase-Schema
+- Service-Worker-Cache: `mampfo-v0.7.2.7`
 
 ## Neu in v0.7.2.6 – stabiler Synchronisationsstatus
 

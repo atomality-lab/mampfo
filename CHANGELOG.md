@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.7.2.7 – lokale Fasten-Dubletten gegen Cloud bereinigt
+
+### Korrigiert
+- lokale aktive Fasten-Dubletten werden erkannt, wenn eine fachlich identische aktive Cloud-Session bereits unter der kanonischen ID vorhanden ist
+- überzählige lokale UUIDs werden entfernt, auch wenn sie noch in einer alten Sync-Baseline standen
+- zugehörige veraltete Baseline- und Löschmarker werden aufgeräumt
+- unterschiedliche Fastenzeiten werden ausdrücklich nicht automatisch zusammengeführt und bleiben konfliktfähig
+- behebt den Zustand **8 Fastenphasen lokal / 7 in der Cloud**, bei dem der Sync zuvor nichts veränderte
+- Service-Worker-Cache auf v0.7.2.7 aktualisiert
+
 ## v0.7.2.6 – Sync-Status nach Fastenbereinigung stabilisiert
 
 ### Korrigiert

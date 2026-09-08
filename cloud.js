@@ -481,7 +481,7 @@
     return loadJson(backupKey(userId), null);
   }
 
-  function createLocalBackup(userId, reason, snapshot = localData(), appVersion = '0.7.2.6') {
+  function createLocalBackup(userId, reason, snapshot = localData(), appVersion = '0.7.2.7') {
     if (!userId) throw new Error('Für die Sicherheitskopie fehlt die Benutzerzuordnung.');
     const backup = {
       schema: 1,
@@ -529,7 +529,7 @@
     localStorage.setItem(STORAGE.dataVersion, String(snapshot.dataVersion || 4));
   }
 
-  function restoreLastBackup(appVersion = '0.7.2.6') {
+  function restoreLastBackup(appVersion = '0.7.2.7') {
     const userId = currentUser()?.id;
     if (!userId) throw new Error('Bitte zuerst bei Mampfo Cloud anmelden.');
     const backup = lastBackup(userId);
@@ -760,6 +760,53 @@
     });
   }
 
+
+  // v0.7.2.7: Auf älteren Geräten können nach früheren cycleKey-Konflikten
+  // noch aktive lokale Dubletten existieren, obwohl in der Cloud bereits nur
+  // die kanonische Session vorhanden ist. Wenn eine lokale Session fachlich
+  // EXAKT einer aktiven Cloud-Session entspricht (gleiche cycleKey, Zeiten,
+  // Plan und Ziel), ihre eigene ID aber in der Cloud nicht mehr aktiv ist,
+  // ist sie eine reine lokale Dublette und kann gefahrlos entfernt werden.
+  function dedupeLocalFastingSessionsAgainstRemote(localSnapshot, workingSnapshot, remoteRows, baseline, deletions) {
+    const remoteMap = mapRemote(remoteRows || []);
+    const remoteBySemantic = new Map();
+    for (const [remoteId, row] of remoteMap) {
+      if (row?.deleted_at) continue;
+      const semantic = fastingSessionSemanticHash(row?.payload);
+      if (semantic && !remoteBySemantic.has(semantic)) remoteBySemantic.set(semantic, String(remoteId));
+    }
+
+    let changed = false;
+    let deletionMarkersChanged = false;
+    const removedIds = [];
+    const localRecords = Array.isArray(localSnapshot.fastingSessions) ? localSnapshot.fastingSessions : [];
+
+    for (const record of [...localRecords]) {
+      if (!record || record.deleted || record.id == null) continue;
+      const localId = String(record.id);
+      const semantic = fastingSessionSemanticHash(record);
+      const canonicalId = semantic ? remoteBySemantic.get(semantic) : null;
+      if (!canonicalId || canonicalId === localId) continue;
+
+      const ownRemoteRow = remoteMap.get(localId) || null;
+      // Nur lokale Überreste bereinigen. Ist dieselbe alte ID auch in der Cloud
+      // noch aktiv, muss der normale Sync sie behandeln und darf nichts verstecken.
+      if (ownRemoteRow && !ownRemoteRow.deleted_at) continue;
+
+      localSnapshot.fastingSessions = (localSnapshot.fastingSessions || []).filter(item => String(item?.id) !== localId);
+      workingSnapshot.fastingSessions = (workingSnapshot.fastingSessions || []).filter(item => String(item?.id) !== localId);
+      if (baseline?.collections?.fastingSessions?.[localId]) delete baseline.collections.fastingSessions[localId];
+      if (deletions?.collections?.fastingSessions?.[localId]) {
+        delete deletions.collections.fastingSessions[localId];
+        deletionMarkersChanged = true;
+      }
+      removedIds.push(localId);
+      changed = true;
+    }
+
+    return { changed, deletionMarkersChanged, removedIds };
+  }
+
   function effectiveLocalState(id, localMap, baseEntry, deletion = null) {
     if (localMap.has(id)) return stateFromRecord(localMap.get(id));
     // v0.7.2.3: Fehlen allein ist keine Löschung mehr. Nur eine explizite
@@ -888,7 +935,7 @@
     }], 'user_id');
   }
 
-  async function initializeCloud(appVersion = '0.7.2.6') {
+  async function initializeCloud(appVersion = '0.7.2.7') {
     const user = await getUser();
     if (!user?.id) throw new Error('Die Anmeldung konnte nicht bestätigt werden.');
     const before = await cloudCounts();
@@ -931,7 +978,7 @@
     return await cloudCounts();
   }
 
-  async function performSync(appVersion = '0.7.2.6', reason = 'manual') {
+  async function performSync(appVersion = '0.7.2.7', reason = 'manual') {
     const user = await getUser();
     if (!user?.id) throw new Error('Bitte zuerst bei Mampfo Cloud anmelden.');
     const counts = await cloudCounts();
@@ -954,11 +1001,13 @@
     // Geräteabgleich keine doppelten Pfirsiche, Haferdrinks usw.
     const externalDedupe = canonicalizeExternalFoodIds(local, remote.foods, baseline);
     const working = deepClone(local);
+    const fastingLocalDedupe = dedupeLocalFastingSessionsAgainstRemote(local, working, remote.fastingSessions, baseline, deletions);
+    if (fastingLocalDedupe.deletionMarkersChanged) saveDeletions(user.id, deletions);
     const previousConflicts = new Map(conflicts(user.id).map(item => [item.id, item]));
     const nextConflicts = [];
     let uploaded = 0;
     let downloaded = 0;
-    let changedLocal = externalDedupe.changed;
+    let changedLocal = externalDedupe.changed || fastingLocalDedupe.changed;
 
     for (const collection of COLLECTIONS) {
       const localMap = mapLocal(local[collection]);
@@ -997,7 +1046,7 @@
         const localPhysicallyMissing = !localMap.has(id);
         const remotePhysicallyMissing = !remoteMap.has(id);
 
-        // v0.7.2.6: Alte Sync-Basen können noch IDs enthalten, die weder lokal
+        // v0.7.2.7: Alte Sync-Basen können noch IDs enthalten, die weder lokal
         // noch in der vollständig gelesenen Cloud existieren. Solche Ghost-IDs
         // dürfen nicht ewig als „fehlender lokaler Datensatz“ gelten. Nach einem
         // erfolgreichen Vollabruf sind sie sicher als veraltete Baseline zu entfernen.
@@ -1186,7 +1235,7 @@
     return { uploaded, downloaded, conflicts: nextConflicts.length, changedLocal, lastSyncAt: stamp };
   }
 
-  async function syncNow(appVersion = '0.7.2.6', options = {}) {
+  async function syncNow(appVersion = '0.7.2.7', options = {}) {
     if (syncPromise) return syncPromise;
     const reason = options.reason || 'manual';
     const userId = currentUser()?.id;
@@ -1208,7 +1257,7 @@
     return syncPromise;
   }
 
-  function scheduleSync(appVersion = '0.7.2.6', options = {}) {
+  function scheduleSync(appVersion = '0.7.2.7', options = {}) {
     if (!appReady || !isConfigured() || !currentUser()) return;
     const reason = options.reason || 'automatic';
     if (['local-change', 'backup-restore', 'after-conflict'].includes(reason)) markPending(currentUser()?.id, reason);
@@ -1227,7 +1276,7 @@
     }, Math.max(0, delay));
   }
 
-  function onAppReady(appVersion = '0.7.2.6') {
+  function onAppReady(appVersion = '0.7.2.7') {
     appReady = true;
     if (!isOnline()) {
       markPending(currentUser()?.id, 'app-start-offline');
@@ -1262,7 +1311,7 @@
     return effectiveLocalState(conflict.recordId, map, baseEntry, deletionMarker(conflict.collection, conflict.recordId, userId));
   }
 
-  async function resolveConflict(conflictIdentifier, choice, appVersion = '0.7.2.6') {
+  async function resolveConflict(conflictIdentifier, choice, appVersion = '0.7.2.7') {
     const user = await getUser();
     if (!user?.id) throw new Error('Bitte zuerst anmelden.');
     const list = conflicts(user.id);

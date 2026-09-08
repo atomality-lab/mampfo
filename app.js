@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const CFG = window.APP_CONFIG || { appName: 'Mampfo', version: '0.7.2.6' };
+  const CFG = window.APP_CONFIG || { appName: 'Mampfo', version: '0.7.2.7' };
   const STORAGE = {
     settings: 'mampfo.settings.v2',
     entries: 'mampfo.entries.v2',
@@ -303,7 +303,7 @@
       state.fastPlans = Array.isArray(snapshot.fastPlans) ? snapshot.fastPlans : [];
       state.fastingSessions = Array.isArray(snapshot.fastingSessions) ? snapshot.fastingSessions : [];
       state.onboarded = Boolean(snapshot.onboarded);
-      // v0.7.2.6: Ein fertig gemergter Cloud-Stand darf nicht unmittelbar nach
+      // v0.7.2.7: Ein fertig gemergter Cloud-Stand darf nicht unmittelbar nach
       // dem Einspielen erneut durch die lokale Fasten-Reparatur verändert werden.
       // Sonst ist die soeben gespeicherte Sync-Basis direkt wieder veraltet und
       // die Oberfläche springt von „Alles aktuell“ zurück auf „Abgleich nötig“.
