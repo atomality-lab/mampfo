@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const CFG = window.APP_CONFIG || { appName: 'Mampfo', version: '0.7.2' };
+  const CFG = window.APP_CONFIG || { appName: 'Mampfo', version: '0.7.2.5' };
   const STORAGE = {
     settings: 'mampfo.settings.v2',
     entries: 'mampfo.entries.v2',
@@ -250,6 +250,14 @@
     updatedAt: session.updatedAt || session.createdAt || new Date().toISOString()
   }));
 
+
+  // v0.7.2.5: alte Fasten-Sonderfälle aus der Zeit vor der richtungsabhängigen
+  // Essenskorrektur sowie eindeutige cycleKey-Dubletten lokal bereinigen.
+  const initialFastingRepair = repairFastingSessionData(new Date());
+  if (initialFastingRepair.changed) {
+    localStorage.setItem(STORAGE.fastingSessions, JSON.stringify(state.fastingSessions));
+  }
+
   const app = document.getElementById('app');
   const modalRoot = document.getElementById('modal-root');
   const toastRoot = document.getElementById('toast-root');
@@ -285,6 +293,7 @@
 
   function applyCloudSnapshot(snapshot) {
     if (!snapshot) return;
+    let fastingRepairChanged = false;
     cloudApplyInProgress = true;
     try {
       state.settings = { ...(snapshot.settings || {}) };
@@ -294,11 +303,15 @@
       state.fastPlans = Array.isArray(snapshot.fastPlans) ? snapshot.fastPlans : [];
       state.fastingSessions = Array.isArray(snapshot.fastingSessions) ? snapshot.fastingSessions : [];
       state.onboarded = Boolean(snapshot.onboarded);
+      fastingRepairChanged = repairFastingSessionData(new Date()).changed;
       persist({ skipCloud: true });
     } finally {
       cloudApplyInProgress = false;
     }
     render();
+    if (fastingRepairChanged) {
+      window.setTimeout(() => window.MampfoCloud?.scheduleSync?.(CFG.version, { delay: 650, reason: 'local-change' }), 0);
+    }
   }
 
   window.MampfoDataBridge = {
@@ -1126,21 +1139,27 @@
 
   function resolveFastingConflictBeforeFoodSave(values, continueSave) {
     const moment = foodEntryMoment(values);
-    const session = fastingSessionContainingMoment(moment, new Date());
+    const now = new Date();
+    const session = fastingSessionContainingMoment(moment, now);
     if (!session) return continueSave();
 
     const sessionStart = new Date(session.startAt);
     const sessionEnd = new Date(session.endAt || session.plannedEndAt);
+    const plannedEnd = new Date(session.plannedEndAt || session.endAt);
     const mealTime = clockText(moment);
+    const adjustment = fastingFoodAdjustmentMode(session, moment);
+    const delayingStart = adjustment === 'delay-start';
 
     modalRoot.innerHTML = `<div class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="food-fasting-conflict-title"><div class="modal">
       <div class="modal-icon lavender">${icon('moon')}</div>
       <h2 id="food-fasting-conflict-title">Fastenphase anpassen?</h2>
       <p>Der Essenseintrag um <strong>${esc(mealTime)} Uhr</strong> liegt innerhalb einer aufgezeichneten Fastenphase.</p>
       <div class="compare-box single"><div><small>Fastenphase</small><strong>${esc(fastingConflictDateTime(sessionStart))}</strong><span>bis ${esc(fastingConflictDateTime(sessionEnd))}</span></div></div>
-      <p class="modal-note">Mampfo ändert die Fastenzeit nicht automatisch. Du entscheidest, ob dieses Essen die Fastenphase beendet.</p>
+      <p class="modal-note">${delayingStart
+        ? `Das Essen liegt am Anfang der Fastenphase. Mampfo kann den Fastenbeginn auf <strong>${esc(mealTime)} Uhr</strong> verschieben.`
+        : `Das Essen liegt am Ende der Fastenphase. Mampfo kann die Fastenphase um <strong>${esc(mealTime)} Uhr</strong> beenden.`}</p>
       <div class="modal-actions">
-        <button class="primary-button" id="food-end-fast">Fasten um ${esc(mealTime)} beenden</button>
+        <button class="primary-button" id="food-adjust-fast">${delayingStart ? `Fasten erst um ${esc(mealTime)} beginnen` : `Fasten um ${esc(mealTime)} beenden`}</button>
         <button class="secondary-button" id="food-keep-fast">Nur Essen speichern</button>
         <button class="secondary-button" id="food-fast-cancel">Abbrechen</button>
       </div>
@@ -1151,10 +1170,27 @@
       modalRoot.innerHTML = '';
       continueSave();
     };
-    document.getElementById('food-end-fast').onclick = () => {
-      session.endAt = moment.toISOString();
-      session.endSource = 'foodEntry';
+    document.getElementById('food-adjust-fast').onclick = () => {
+      if (delayingStart) {
+        const existingEnd = session.endAt ? new Date(session.endAt) : null;
+        const oldFoodEnd = session.endSource === 'foodEntry' && existingEnd && Math.abs(existingEnd.getTime() - moment.getTime()) < 60000;
+        session.startAt = moment.toISOString();
+        session.startSource = 'foodEntry';
+        if (oldFoodEnd) {
+          if (!Number.isNaN(plannedEnd.getTime()) && now.getTime() >= plannedEnd.getTime()) {
+            session.endAt = plannedEnd.toISOString();
+            session.endSource = 'schedule';
+          } else {
+            session.endAt = null;
+            session.endSource = null;
+          }
+        }
+      } else {
+        session.endAt = moment.toISOString();
+        session.endSource = 'foodEntry';
+      }
       session.updatedAt = new Date().toISOString();
+      repairFastingSessionData(new Date());
       persist();
       modalRoot.innerHTML = '';
       continueSave();
@@ -3543,6 +3579,173 @@
     return result;
   }
 
+  function localDayKey(date) {
+    const value = date instanceof Date ? date : new Date(date);
+    if (Number.isNaN(value.getTime())) return '';
+    return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
+  }
+
+  function fastingFoodAdjustmentMode(session, moment) {
+    const start = new Date(session?.startAt);
+    const end = new Date(session?.plannedEndAt || session?.endAt);
+    const meal = moment instanceof Date ? moment : new Date(moment);
+    if ([start, end, meal].some(value => Number.isNaN(value.getTime()))) return 'end-early';
+
+    // Bei der typischen Fastenphase über Mitternacht ist ein Essen am Starttag
+    // ein spätes letztes Essen: Das Fasten beginnt erst danach. Ein Essen am
+    // Folgetag beendet die laufende Fastenphase dagegen vorzeitig.
+    const startDay = localDayKey(start);
+    const endDay = localDayKey(end);
+    const mealDay = localDayKey(meal);
+    if (startDay !== endDay) {
+      if (mealDay === startDay) return 'delay-start';
+      if (mealDay === endDay) return 'end-early';
+    }
+
+    // Für ungewöhnliche Fastenfenster innerhalb eines Kalendertags entscheidet
+    // die nähere Phasengrenze. So bleibt das Verhalten auch bei Custom-Plänen
+    // nachvollziehbar.
+    return (meal.getTime() - start.getTime()) <= (end.getTime() - meal.getTime()) ? 'delay-start' : 'end-early';
+  }
+
+  function fastingSessionComparable(session) {
+    if (!session || session.deleted) return null;
+    const minute = value => {
+      if (!value) return null;
+      const d = new Date(value);
+      if (Number.isNaN(d.getTime())) return null;
+      d.setSeconds(0, 0);
+      return d.toISOString();
+    };
+    return {
+      cycleKey: session.cycleKey || null,
+      planId: session.planId || null,
+      startAt: minute(session.startAt),
+      endAt: minute(session.endAt),
+      plannedEndAt: minute(session.plannedEndAt),
+      targetMinutes: Number(session.targetMinutes || 0)
+    };
+  }
+
+  function fastingComparableEqual(a, b) {
+    const left = fastingSessionComparable(a);
+    const right = fastingSessionComparable(b);
+    return Boolean(left && right && JSON.stringify(left) === JSON.stringify(right));
+  }
+
+  function isScheduledFastingSession(session) {
+    return session && !session.deleted
+      && (session.startSource || 'schedule') === 'schedule'
+      && (!session.endSource || session.endSource === 'schedule');
+  }
+
+  function isFoodAdjustedFastingSession(session) {
+    return session && !session.deleted && session.startSource === 'foodEntry';
+  }
+
+  function canAutoMergeFastingSessions(preferred, other) {
+    if (!preferred || !other || preferred.deleted || other.deleted) return false;
+    if (!preferred.cycleKey || preferred.cycleKey !== other.cycleKey) return false;
+    if (fastingComparableEqual(preferred, other)) return true;
+
+    // Eine durch einen Essenseintrag nach hinten verschobene Fastenphase ist die
+    // konkrete Abweichung vom Plan und schlägt daher eine parallel rekonstruierte
+    // reine Schedule-Session derselben cycleKey.
+    if (isFoodAdjustedFastingSession(preferred) && isScheduledFastingSession(other)) {
+      const aEnd = new Date(preferred.plannedEndAt || preferred.endAt).getTime();
+      const bEnd = new Date(other.plannedEndAt || other.endAt).getTime();
+      return Number.isFinite(aEnd) && aEnd === bEnd;
+    }
+    return false;
+  }
+
+  function fastingSessionPreference(session) {
+    if (isFoodAdjustedFastingSession(session)) return 40;
+    if (session?.startSource === 'manual' || session?.endSource === 'manual') return 30;
+    if (session?.endSource === 'foodEntry') return 25;
+    if (isScheduledFastingSession(session)) return 10;
+    return 20;
+  }
+
+  function repairLegacyFoodEndedFastingSessions(now = new Date()) {
+    let changed = false;
+    for (const session of state.fastingSessions) {
+      if (!session || session.deleted || !session.cycleKey || !session.endAt || !session.plannedEndAt) continue;
+      const start = new Date(session.startAt);
+      const meal = new Date(session.endAt);
+      const plannedEnd = new Date(session.plannedEndAt);
+      if ([start, meal, plannedEnd].some(value => Number.isNaN(value.getTime()))) continue;
+      if (meal.getTime() <= start.getTime() || meal.getTime() >= plannedEnd.getTime()) continue;
+      const foodEvidence = session.endSource === 'foodEntry' || state.entries.some(entry => {
+        const entryMoment = foodEntryMoment(entry);
+        return entryMoment && Math.abs(entryMoment.getTime() - meal.getTime()) < 60000;
+      });
+      if (!foodEvidence) continue;
+      if (fastingFoodAdjustmentMode(session, meal) !== 'delay-start') continue;
+
+      // Frühere Versionen haben z. B. ein Essen um 19:12 bei geplantem Start
+      // 19:00 als Fasten 19:00–19:12 gespeichert. Fachlich richtig ist:
+      // letztes Essen 19:12 -> Fasten beginnt 19:12 und läuft bis zum geplanten Ende.
+      session.startAt = meal.toISOString();
+      session.startSource = 'foodEntry';
+      if (now.getTime() >= plannedEnd.getTime()) {
+        session.endAt = plannedEnd.toISOString();
+        session.endSource = 'schedule';
+      } else {
+        session.endAt = null;
+        session.endSource = null;
+      }
+      session.updatedAt = now.toISOString();
+      changed = true;
+    }
+    return changed;
+  }
+
+  function dedupeFastingSessionsByCycleKey(now = new Date()) {
+    let changed = false;
+    const groups = new Map();
+    state.fastingSessions.forEach((session, index) => {
+      if (!session || session.deleted || !session.cycleKey) return;
+      const list = groups.get(session.cycleKey) || [];
+      list.push({ session, index });
+      groups.set(session.cycleKey, list);
+    });
+
+    for (const group of groups.values()) {
+      if (group.length < 2) continue;
+      const ranked = [...group].sort((a, b) => {
+        const pref = fastingSessionPreference(b.session) - fastingSessionPreference(a.session);
+        if (pref) return pref;
+        const au = new Date(a.session.updatedAt || a.session.createdAt || 0).getTime() || 0;
+        const bu = new Date(b.session.updatedAt || b.session.createdAt || 0).getTime() || 0;
+        if (bu !== au) return bu - au;
+        return String(a.session.id).localeCompare(String(b.session.id));
+      });
+      const keeper = ranked[0].session;
+      for (const candidate of ranked.slice(1)) {
+        const other = candidate.session;
+        if (!canAutoMergeFastingSessions(keeper, other)) continue;
+        if (String(keeper.id) === String(other.id)) {
+          // Doppelte Array-Zeile derselben Cloud-ID: nur lokal entfernen.
+          state.fastingSessions.splice(candidate.index, 1);
+        } else {
+          // Unterschiedliche UUIDs derselben geplanten Phase bleiben als Tombstone
+          // erhalten, damit der nächste Cloud-Sync die überzählige Zeile löscht.
+          other.deleted = true;
+          other.updatedAt = now.toISOString();
+        }
+        changed = true;
+      }
+    }
+    return changed;
+  }
+
+  function repairFastingSessionData(now = new Date()) {
+    const repairedFoodDirection = repairLegacyFoodEndedFastingSessions(now);
+    const deduped = dedupeFastingSessionsByCycleKey(now);
+    return { changed: repairedFoodDirection || deduped, repairedFoodDirection, deduped };
+  }
+
   function sessionsOverlap(start, end, excludeId = null) {
     const startMs = new Date(start).getTime();
     const endMs = new Date(end).getTime();
@@ -4987,4 +5190,7 @@
   persist({ skipCloud: true });
   render();
   window.MampfoCloud?.onAppReady?.(CFG.version);
+  if (initialFastingRepair.changed) {
+    window.MampfoCloud?.scheduleSync?.(CFG.version, { delay: 700, reason: 'local-change' });
+  }
 })();

@@ -481,7 +481,7 @@
     return loadJson(backupKey(userId), null);
   }
 
-  function createLocalBackup(userId, reason, snapshot = localData(), appVersion = '0.7.2.3') {
+  function createLocalBackup(userId, reason, snapshot = localData(), appVersion = '0.7.2.5') {
     if (!userId) throw new Error('Für die Sicherheitskopie fehlt die Benutzerzuordnung.');
     const backup = {
       schema: 1,
@@ -529,7 +529,7 @@
     localStorage.setItem(STORAGE.dataVersion, String(snapshot.dataVersion || 4));
   }
 
-  function restoreLastBackup(appVersion = '0.7.2.3') {
+  function restoreLastBackup(appVersion = '0.7.2.5') {
     const userId = currentUser()?.id;
     if (!userId) throw new Error('Bitte zuerst bei Mampfo Cloud anmelden.');
     const backup = lastBackup(userId);
@@ -700,16 +700,63 @@
     return { changed, notes };
   }
 
+  function fastingSyncMinute(value) {
+    if (!value) return null;
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return null;
+    date.setSeconds(0, 0);
+    return date.toISOString();
+  }
+
+  function fastingSessionSemanticCore(record) {
+    if (!record || record.deleted) return null;
+    return {
+      cycleKey: record.cycleKey || null,
+      planId: record.planId || null,
+      startAt: fastingSyncMinute(record.startAt),
+      endAt: fastingSyncMinute(record.endAt),
+      plannedEndAt: fastingSyncMinute(record.plannedEndAt),
+      targetMinutes: Number(record.targetMinutes || 0)
+    };
+  }
+
   function fastingSessionSemanticHash(record) {
     if (!record || record.deleted || !record.cycleKey) return null;
-    return hashValue({
-      cycleKey: record.cycleKey,
-      startAt: record.startAt || null,
-      endAt: record.endAt || null,
-      plannedEndAt: record.plannedEndAt || null,
-      targetMinutes: Number(record.targetMinutes || 0),
-      startSource: record.startSource || null,
-      endSource: record.endSource || null
+    return hashValue(fastingSessionSemanticCore(record));
+  }
+
+  function fastingStatesSemanticallyEqual(a, b) {
+    if (!a || !b || a.kind !== 'active' || b.kind !== 'active') return false;
+    const left = fastingSessionSemanticCore(a.payload);
+    const right = fastingSessionSemanticCore(b.payload);
+    return Boolean(left && right && hashValue(left) === hashValue(right));
+  }
+
+  function fastingSourceRank(source) {
+    if (source === 'foodEntry') return 4;
+    if (source === 'manual') return 3;
+    if (source === 'schedule') return 2;
+    return 1;
+  }
+
+  function preferredFastingSource(a, b) {
+    return fastingSourceRank(a) >= fastingSourceRank(b) ? (a || b || null) : (b || a || null);
+  }
+
+  function canonicalFastingState(localState, remoteState, recordId) {
+    const local = localState?.payload || {};
+    const remote = remoteState?.payload || {};
+    const updated = [local.updatedAt, remote.updatedAt].filter(Boolean).sort();
+    const created = [local.createdAt, remote.createdAt].filter(Boolean).sort();
+    const base = (new Date(local.updatedAt || 0).getTime() || 0) >= (new Date(remote.updatedAt || 0).getTime() || 0) ? local : remote;
+    return activeState({
+      ...deepClone(base),
+      id: String(recordId),
+      startSource: preferredFastingSource(local.startSource, remote.startSource),
+      endSource: preferredFastingSource(local.endSource, remote.endSource),
+      createdAt: created.length ? created[0] : (base.createdAt || base.startAt || new Date().toISOString()),
+      updatedAt: updated.length ? updated[updated.length - 1] : (base.updatedAt || base.createdAt || new Date().toISOString()),
+      deleted: false
     });
   }
 
@@ -841,7 +888,7 @@
     }], 'user_id');
   }
 
-  async function initializeCloud(appVersion = '0.7.2.4') {
+  async function initializeCloud(appVersion = '0.7.2.5') {
     const user = await getUser();
     if (!user?.id) throw new Error('Die Anmeldung konnte nicht bestätigt werden.');
     const before = await cloudCounts();
@@ -884,7 +931,7 @@
     return await cloudCounts();
   }
 
-  async function performSync(appVersion = '0.7.2.4', reason = 'manual') {
+  async function performSync(appVersion = '0.7.2.5', reason = 'manual') {
     const user = await getUser();
     if (!user?.id) throw new Error('Bitte zuerst bei Mampfo Cloud anmelden.');
     const counts = await cloudCounts();
@@ -950,6 +997,28 @@
         const localState = effectiveLocalState(id, localMap, baseEntry, explicitDeletion);
         const remoteState = effectiveRemoteState(id, remoteMap, baseEntry);
         const localPhysicallyMissing = !localMap.has(id);
+
+        // v0.7.2.5: Bei Fastenphasen sind createdAt/updatedAt sowie die technische
+        // Herkunft (schedule/manual/foodEntry) keine fachlichen Unterschiede, wenn
+        // cycleKey, Start, Ende, geplantes Ende und Ziel identisch sind. Solche
+        // Metadatenunterschiede dürfen keinen sichtbaren Konflikt erzeugen.
+        if (collection === 'fastingSessions'
+          && fastingStatesSemanticallyEqual(localState, remoteState)
+          && !statesEqual(localState, remoteState)) {
+          const finalState = canonicalFastingState(localState, remoteState, id);
+          if (!statesEqual(localState, finalState)) {
+            applyStateToSnapshot(working, collection, id, finalState);
+            downloaded += 1;
+            changedLocal = true;
+          }
+          if (!statesEqual(remoteState, finalState)) {
+            await pushRecordState(collection, id, finalState, user.id, remoteMap.get(id)?.payload || null);
+            uploaded += 1;
+          }
+          markBaselineRecord(baseline, collection, id, finalState);
+          clearDeletion(collection, id, user.id);
+          continue;
+        }
 
         if (!baseEntry) {
           if (localState.kind === 'absent' && remoteState.kind !== 'absent') {
@@ -1089,7 +1158,7 @@
     return { uploaded, downloaded, conflicts: nextConflicts.length, changedLocal, lastSyncAt: stamp };
   }
 
-  async function syncNow(appVersion = '0.7.2.4', options = {}) {
+  async function syncNow(appVersion = '0.7.2.5', options = {}) {
     if (syncPromise) return syncPromise;
     const reason = options.reason || 'manual';
     const userId = currentUser()?.id;
@@ -1111,7 +1180,7 @@
     return syncPromise;
   }
 
-  function scheduleSync(appVersion = '0.7.2.3', options = {}) {
+  function scheduleSync(appVersion = '0.7.2.5', options = {}) {
     if (!appReady || !isConfigured() || !currentUser()) return;
     const reason = options.reason || 'automatic';
     if (['local-change', 'backup-restore', 'after-conflict'].includes(reason)) markPending(currentUser()?.id, reason);
@@ -1130,7 +1199,7 @@
     }, Math.max(0, delay));
   }
 
-  function onAppReady(appVersion = '0.7.2.3') {
+  function onAppReady(appVersion = '0.7.2.5') {
     appReady = true;
     if (!isOnline()) {
       markPending(currentUser()?.id, 'app-start-offline');
@@ -1165,7 +1234,7 @@
     return effectiveLocalState(conflict.recordId, map, baseEntry, deletionMarker(conflict.collection, conflict.recordId, userId));
   }
 
-  async function resolveConflict(conflictIdentifier, choice, appVersion = '0.7.2.3') {
+  async function resolveConflict(conflictIdentifier, choice, appVersion = '0.7.2.5') {
     const user = await getUser();
     if (!user?.id) throw new Error('Bitte zuerst anmelden.');
     const list = conflicts(user.id);

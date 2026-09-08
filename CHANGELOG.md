@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.7.2.5 – Fasten-Sync und Essenskorrektur repariert
+
+### Korrigiert
+- identische Fastenphasen derselben `cycleKey` werden lokal zusammengeführt; überzählige UUIDs werden als Tombstones zum Löschen in der Cloud markiert
+- Fasten-Konflikte mit identischen Zeiten, aber abweichenden technischen Metadaten (`createdAt`, `updatedAt`, Quellenfelder) werden nicht mehr als echte Konflikte behandelt
+- Abendliche Ernährungseinträge nach geplantem Fastenbeginn verschieben jetzt den **Fastenbeginn** nach hinten, statt eine kurze falsche Fastenphase zu erzeugen
+- Morgendliche Ernährungseinträge vor geplantem Fastenende beenden die Fastenphase weiterhin vorzeitig
+- bekannte Altfehler wie `19:00–19:12` bei einem letzten Essen um 19:12 werden automatisch zu `19:12–geplantes Ende` repariert
+- vorhandene Ernährungseinträge werden zusätzlich als Beleg für die historische Reparatur genutzt, falls das frühere `endSource=foodEntry` durch einen Sync-Konflikt verloren ging
+- Status `Lokaler Stand muss abgeglichen werden` wird nach Bereinigung überzähliger Fasten-Tombstones beim folgenden Sync aufgeräumt
+- Service-Worker-Cache auf v0.7.2.5 aktualisiert
+
+### Datenmodell
+- keine Supabase-Schemaänderung
+- keine neue Tabelle
+- bestehende `cycleKey`- und Tombstone-Logik wird verwendet
+
 ## v0.7.2.4 – Veraltete Löschmarken bereinigt
 
 ### Korrigiert
