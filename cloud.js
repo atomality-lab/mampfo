@@ -481,7 +481,7 @@
     return loadJson(backupKey(userId), null);
   }
 
-  function createLocalBackup(userId, reason, snapshot = localData(), appVersion = '0.7.2.5') {
+  function createLocalBackup(userId, reason, snapshot = localData(), appVersion = '0.7.2.6') {
     if (!userId) throw new Error('Für die Sicherheitskopie fehlt die Benutzerzuordnung.');
     const backup = {
       schema: 1,
@@ -529,7 +529,7 @@
     localStorage.setItem(STORAGE.dataVersion, String(snapshot.dataVersion || 4));
   }
 
-  function restoreLastBackup(appVersion = '0.7.2.5') {
+  function restoreLastBackup(appVersion = '0.7.2.6') {
     const userId = currentUser()?.id;
     if (!userId) throw new Error('Bitte zuerst bei Mampfo Cloud anmelden.');
     const backup = lastBackup(userId);
@@ -888,7 +888,7 @@
     }], 'user_id');
   }
 
-  async function initializeCloud(appVersion = '0.7.2.5') {
+  async function initializeCloud(appVersion = '0.7.2.6') {
     const user = await getUser();
     if (!user?.id) throw new Error('Die Anmeldung konnte nicht bestätigt werden.');
     const before = await cloudCounts();
@@ -931,7 +931,7 @@
     return await cloudCounts();
   }
 
-  async function performSync(appVersion = '0.7.2.5', reason = 'manual') {
+  async function performSync(appVersion = '0.7.2.6', reason = 'manual') {
     const user = await getUser();
     if (!user?.id) throw new Error('Bitte zuerst bei Mampfo Cloud anmelden.');
     const counts = await cloudCounts();
@@ -994,9 +994,37 @@
         const baseEntry = baseMap[id] || null;
         const baseState = stateFromBaseline(baseEntry);
         const explicitDeletion = deletions?.collections?.[collection]?.[String(id)] || null;
+        const localPhysicallyMissing = !localMap.has(id);
+        const remotePhysicallyMissing = !remoteMap.has(id);
+
+        // v0.7.2.6: Alte Sync-Basen können noch IDs enthalten, die weder lokal
+        // noch in der vollständig gelesenen Cloud existieren. Solche Ghost-IDs
+        // dürfen nicht ewig als „fehlender lokaler Datensatz“ gelten. Nach einem
+        // erfolgreichen Vollabruf sind sie sicher als veraltete Baseline zu entfernen.
+        if (baseEntry && localPhysicallyMissing && remotePhysicallyMissing && !explicitDeletion) {
+          delete baseline.collections[collection][id];
+          continue;
+        }
+
+        // Technische Fasten-Tombstones aus der cycleKey-Deduplizierung können
+        // übrig bleiben, obwohl die überzählige UUID weder in Cloud noch Baseline
+        // existiert. Wenn eine aktive Session derselben cycleKey vorhanden ist,
+        // ist dieser Marker vollständig erledigt und darf lokal entfernt werden.
+        if (collection === 'fastingSessions' && !baseEntry && remotePhysicallyMissing && !explicitDeletion) {
+          const orphan = localMap.get(id) || null;
+          if (orphan?.deleted && orphan.cycleKey) {
+            const hasKeeper = (working.fastingSessions || []).some(item => item && !item.deleted && String(item.id) !== String(id) && item.cycleKey === orphan.cycleKey);
+            if (hasKeeper) {
+              working.fastingSessions = (working.fastingSessions || []).filter(item => String(item.id) !== String(id));
+              localMap.delete(id);
+              changedLocal = true;
+              continue;
+            }
+          }
+        }
+
         const localState = effectiveLocalState(id, localMap, baseEntry, explicitDeletion);
         const remoteState = effectiveRemoteState(id, remoteMap, baseEntry);
-        const localPhysicallyMissing = !localMap.has(id);
 
         // v0.7.2.5: Bei Fastenphasen sind createdAt/updatedAt sowie die technische
         // Herkunft (schedule/manual/foodEntry) keine fachlichen Unterschiede, wenn
@@ -1158,7 +1186,7 @@
     return { uploaded, downloaded, conflicts: nextConflicts.length, changedLocal, lastSyncAt: stamp };
   }
 
-  async function syncNow(appVersion = '0.7.2.5', options = {}) {
+  async function syncNow(appVersion = '0.7.2.6', options = {}) {
     if (syncPromise) return syncPromise;
     const reason = options.reason || 'manual';
     const userId = currentUser()?.id;
@@ -1180,7 +1208,7 @@
     return syncPromise;
   }
 
-  function scheduleSync(appVersion = '0.7.2.5', options = {}) {
+  function scheduleSync(appVersion = '0.7.2.6', options = {}) {
     if (!appReady || !isConfigured() || !currentUser()) return;
     const reason = options.reason || 'automatic';
     if (['local-change', 'backup-restore', 'after-conflict'].includes(reason)) markPending(currentUser()?.id, reason);
@@ -1199,7 +1227,7 @@
     }, Math.max(0, delay));
   }
 
-  function onAppReady(appVersion = '0.7.2.5') {
+  function onAppReady(appVersion = '0.7.2.6') {
     appReady = true;
     if (!isOnline()) {
       markPending(currentUser()?.id, 'app-start-offline');
@@ -1234,7 +1262,7 @@
     return effectiveLocalState(conflict.recordId, map, baseEntry, deletionMarker(conflict.collection, conflict.recordId, userId));
   }
 
-  async function resolveConflict(conflictIdentifier, choice, appVersion = '0.7.2.5') {
+  async function resolveConflict(conflictIdentifier, choice, appVersion = '0.7.2.6') {
     const user = await getUser();
     if (!user?.id) throw new Error('Bitte zuerst anmelden.');
     const list = conflicts(user.id);
@@ -1314,7 +1342,13 @@
         if (deletion && !baseEntry?.deleted) return true;
 
         // Neuer lokaler Datensatz, der noch nicht Teil der Sync-Basis ist.
-        if (localRecord && !baseEntry) return true;
+        // Ausnahme: Ein technischer Fasten-Tombstone ohne Baseline und ohne
+        // explizite Löschmarke ist kein neuer Datensatz. Solche Marker entstehen
+        // bei der cycleKey-Deduplizierung und werden beim nächsten Vollsync entfernt.
+        if (localRecord && !baseEntry) {
+          if (collection === 'fastingSessions' && localRecord.deleted && !deletion) continue;
+          return true;
+        }
 
         // Früher aktiver Datensatz fehlt lokal: Reparatur/Download erforderlich.
         if (!localRecord && baseEntry && !baseEntry.deleted) return true;

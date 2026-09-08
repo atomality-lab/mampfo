@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const CFG = window.APP_CONFIG || { appName: 'Mampfo', version: '0.7.2.5' };
+  const CFG = window.APP_CONFIG || { appName: 'Mampfo', version: '0.7.2.6' };
   const STORAGE = {
     settings: 'mampfo.settings.v2',
     entries: 'mampfo.entries.v2',
@@ -291,7 +291,7 @@
     };
   }
 
-  function applyCloudSnapshot(snapshot) {
+  function applyCloudSnapshot(snapshot, options = {}) {
     if (!snapshot) return;
     let fastingRepairChanged = false;
     cloudApplyInProgress = true;
@@ -303,7 +303,14 @@
       state.fastPlans = Array.isArray(snapshot.fastPlans) ? snapshot.fastPlans : [];
       state.fastingSessions = Array.isArray(snapshot.fastingSessions) ? snapshot.fastingSessions : [];
       state.onboarded = Boolean(snapshot.onboarded);
-      fastingRepairChanged = repairFastingSessionData(new Date()).changed;
+      // v0.7.2.6: Ein fertig gemergter Cloud-Stand darf nicht unmittelbar nach
+      // dem Einspielen erneut durch die lokale Fasten-Reparatur verändert werden.
+      // Sonst ist die soeben gespeicherte Sync-Basis direkt wieder veraltet und
+      // die Oberfläche springt von „Alles aktuell“ zurück auf „Abgleich nötig“.
+      // Legacy-Reparaturen laufen weiterhin beim App-Start bzw. bei lokalen Daten.
+      const source = String(options?.source || '');
+      const isFinalCloudApply = source === 'cloud' || source === 'cloud-conflict';
+      if (!isFinalCloudApply) fastingRepairChanged = repairFastingSessionData(new Date()).changed;
       persist({ skipCloud: true });
     } finally {
       cloudApplyInProgress = false;

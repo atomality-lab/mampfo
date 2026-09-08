@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.7.2.6 – Sync-Status nach Fastenbereinigung stabilisiert
+
+### Korrigiert
+- verwaiste technische Fasten-Tombstones lösen keinen dauerhaften Status „Lokaler Stand muss abgeglichen werden“ mehr aus
+- erledigte cycleKey-Dubletten werden beim Vollsync lokal aufgeräumt, wenn die überzählige UUID weder in Cloud noch Sync-Basis existiert
+- veraltete Baseline-IDs, die weder lokal noch in der vollständig gelesenen Cloud vorhanden sind, werden bereinigt
+- ein fertig gemergter Cloud-Stand wird beim lokalen Einspielen nicht unmittelbar erneut durch die Fasten-Legacy-Reparatur verändert
+- dadurch bleibt „Alles aktuell“ nach einem erfolgreichen Sync stabil, wenn fachlich kein Abgleich mehr nötig ist
+- keine Änderung an Ernährungs-, Konflikt- oder eigentlicher Löschlogik
+- Service-Worker-Cache auf v0.7.2.6 aktualisiert
+
 ## v0.7.2.5 – Fasten-Sync und Essenskorrektur repariert
 
 ### Korrigiert
