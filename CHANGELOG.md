@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.7.3 – zentrale Erfassungssuche
+
+- Neue gemeinsame Suche unter **Erfassen** für eigene Lebensmittel, eigene Rezepte, BLS 4.0 und Open Food Facts.
+- Rezepttreffer berücksichtigen Rezeptnamen und Zutaten.
+- Eigene Inhalte stehen vor externen Treffern.
+- BLS-Suche läuft lokal sofort; Open Food Facts wird aus API-Rücksicht nur nach Klick auf **Suchen** ergänzt.
+- Externe Treffer können direkt mit Menge, Datum und Uhrzeit ins Tagebuch eingetragen werden.
+- Zwei Wege: **Nur erfassen** oder **Erfassen & speichern**.
+- **Erfassen & speichern** erzeugt ein persönliches Lebensmittel mit `source` + `sourceId` und verknüpft den Tagebucheintrag damit.
+- Bereits gespeicherte externe Treffer werden erkannt und nicht erneut angelegt.
+- Fastenprüfung bleibt beim direkten externen Erfassen aktiv.
+- Kein Supabase-Schema-Update nötig.
+- Service-Worker auf v0.7.3 aktualisiert.
+
 ## v0.7.2.7 – lokale Fasten-Dubletten gegen Cloud bereinigt
 
 ### Korrigiert

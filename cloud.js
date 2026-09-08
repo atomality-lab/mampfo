@@ -481,7 +481,7 @@
     return loadJson(backupKey(userId), null);
   }
 
-  function createLocalBackup(userId, reason, snapshot = localData(), appVersion = '0.7.2.7') {
+  function createLocalBackup(userId, reason, snapshot = localData(), appVersion = '0.7.3') {
     if (!userId) throw new Error('Für die Sicherheitskopie fehlt die Benutzerzuordnung.');
     const backup = {
       schema: 1,
@@ -529,7 +529,7 @@
     localStorage.setItem(STORAGE.dataVersion, String(snapshot.dataVersion || 4));
   }
 
-  function restoreLastBackup(appVersion = '0.7.2.7') {
+  function restoreLastBackup(appVersion = '0.7.3') {
     const userId = currentUser()?.id;
     if (!userId) throw new Error('Bitte zuerst bei Mampfo Cloud anmelden.');
     const backup = lastBackup(userId);
@@ -935,7 +935,7 @@
     }], 'user_id');
   }
 
-  async function initializeCloud(appVersion = '0.7.2.7') {
+  async function initializeCloud(appVersion = '0.7.3') {
     const user = await getUser();
     if (!user?.id) throw new Error('Die Anmeldung konnte nicht bestätigt werden.');
     const before = await cloudCounts();
@@ -978,7 +978,7 @@
     return await cloudCounts();
   }
 
-  async function performSync(appVersion = '0.7.2.7', reason = 'manual') {
+  async function performSync(appVersion = '0.7.3', reason = 'manual') {
     const user = await getUser();
     if (!user?.id) throw new Error('Bitte zuerst bei Mampfo Cloud anmelden.');
     const counts = await cloudCounts();
@@ -1235,7 +1235,7 @@
     return { uploaded, downloaded, conflicts: nextConflicts.length, changedLocal, lastSyncAt: stamp };
   }
 
-  async function syncNow(appVersion = '0.7.2.7', options = {}) {
+  async function syncNow(appVersion = '0.7.3', options = {}) {
     if (syncPromise) return syncPromise;
     const reason = options.reason || 'manual';
     const userId = currentUser()?.id;
@@ -1257,7 +1257,7 @@
     return syncPromise;
   }
 
-  function scheduleSync(appVersion = '0.7.2.7', options = {}) {
+  function scheduleSync(appVersion = '0.7.3', options = {}) {
     if (!appReady || !isConfigured() || !currentUser()) return;
     const reason = options.reason || 'automatic';
     if (['local-change', 'backup-restore', 'after-conflict'].includes(reason)) markPending(currentUser()?.id, reason);
@@ -1276,7 +1276,7 @@
     }, Math.max(0, delay));
   }
 
-  function onAppReady(appVersion = '0.7.2.7') {
+  function onAppReady(appVersion = '0.7.3') {
     appReady = true;
     if (!isOnline()) {
       markPending(currentUser()?.id, 'app-start-offline');
@@ -1311,7 +1311,7 @@
     return effectiveLocalState(conflict.recordId, map, baseEntry, deletionMarker(conflict.collection, conflict.recordId, userId));
   }
 
-  async function resolveConflict(conflictIdentifier, choice, appVersion = '0.7.2.7') {
+  async function resolveConflict(conflictIdentifier, choice, appVersion = '0.7.3') {
     const user = await getUser();
     if (!user?.id) throw new Error('Bitte zuerst anmelden.');
     const list = conflicts(user.id);

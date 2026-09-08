@@ -1,4 +1,17 @@
-# Mampfo v0.7.2.7
+# Mampfo v0.7.3
+
+
+## Neu in v0.7.3 – eine Suche für alles Essbare
+
+- Zentrale Suche oben unter **Erfassen** über eigene Lebensmittel, eigene Rezepte, BLS 4.0 und Open Food Facts.
+- Eigene Lebensmittel und Rezepte werden priorisiert. Rezepte werden auch über ihre Zutaten gefunden.
+- BLS wird lokal bereits beim Tippen durchsucht. Open Food Facts wird bewusst erst mit **Suchen** abgefragt.
+- Externe BLS-/Open-Food-Facts-Treffer lassen sich direkt als gegessen erfassen.
+- Bei externen Treffern gibt es **Nur erfassen** und **Erfassen & speichern**. Beim zweiten Weg wird zusätzlich ein normales persönliches Lebensmittel mit stabiler Quellen-ID angelegt.
+- Bereits gespeicherte BLS-/Open-Food-Facts-Treffer werden erkannt und direkt über die persönliche Lebensmittelversion erfasst.
+- Tagebucheinträge bleiben Snapshots. Spätere Änderungen am gespeicherten Lebensmittel verändern alte Einträge nicht.
+- Keine Änderung am Supabase-Schema. BLS bleibt pro Gerät lokal importiert; nur übernommene persönliche Lebensmittel werden synchronisiert.
+- Service-Worker-Cache: `mampfo-v0.7.3`.
 
 Mampfo ist eine persönliche **Local-first-PWA** zum Ernährungstracking. Die App funktioniert weiterhin vollständig mit lokalen Daten und kann angemeldete Geräte über die persönliche Supabase-Cloud abgleichen.
 

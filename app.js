@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const CFG = window.APP_CONFIG || { appName: 'Mampfo', version: '0.7.2.7' };
+  const CFG = window.APP_CONFIG || { appName: 'Mampfo', version: '0.7.3' };
   const STORAGE = {
     settings: 'mampfo.settings.v2',
     entries: 'mampfo.entries.v2',
@@ -149,6 +149,15 @@
     selectedRecipeId: null,
     recipeSearch: '',
     addRecipeSearch: '',
+    addSearch: '',
+    addSearchBlsResults: [],
+    addSearchOffResults: [],
+    addSearchOffMeta: null,
+    addSearchOffError: '',
+    addSearchOffQuery: '',
+    addSearchBlsSearching: false,
+    addSearchOffSearching: false,
+    addSearchToken: 0,
     recipeLogOrigin: 'recipes',
     selectedSavedFoodId: null,
     foodLibrarySource: 'mine',
@@ -717,12 +726,403 @@
 
     app.innerHTML = `<main class="page">
       <header class="topbar"><div><div class="brand-kicker">${esc(CFG.appName)}</div><h1>Erfassen</h1></div><button class="icon-button" data-nav="settings" aria-label="Einstellungen">${icon('settings')}</button></header>
+      ${centralAddSearchMarkup()}
       ${addTabs()}
       <section id="add-content"></section>
     </main>${bottomNav('add')}`;
 
+    bindCentralAddSearch();
     bindAddTabs();
     renderAddTabContent();
+    if (normalizeName(state.addSearch).length >= 2) refreshCentralAddSearch({ includeOff: false, preserveOff: true });
+  }
+
+  function centralSearchScore(text, query) {
+    const haystack = normalizeName(text);
+    const q = normalizeName(query);
+    if (!q || !haystack.includes(q)) return -1;
+    if (haystack === q) return 120;
+    if (haystack.startsWith(q)) return 90;
+    if (haystack.split(' ').some(part => part.startsWith(q))) return 65;
+    return 30;
+  }
+
+  function centralOwnFoodResults(query, limit = 6) {
+    const q = normalizeName(query);
+    if (q.length < 2) return [];
+    return state.savedFoods
+      .map(food => ({
+        food,
+        score: Math.max(centralSearchScore(food.name, q), centralSearchScore(`${food.name} ${food.sourceBrand || ''}`, q))
+      }))
+      .filter(row => row.score >= 0)
+      .sort((a, b) => b.score - a.score
+        || Number(b.food.favorite) - Number(a.food.favorite)
+        || Number(b.food.usageCount || 0) - Number(a.food.usageCount || 0)
+        || a.food.name.localeCompare(b.food.name, 'de'))
+      .slice(0, limit)
+      .map(row => row.food);
+  }
+
+  function centralRecipeResults(query, limit = 6) {
+    const q = normalizeName(query);
+    if (q.length < 2) return [];
+    return state.recipes
+      .map(recipe => {
+        const nameScore = centralSearchScore(recipe.name, q);
+        const ingredient = (recipe.ingredients || []).find(item => normalizeName(item.name).includes(q));
+        const ingredientScore = ingredient ? 18 : -1;
+        return { recipe, score: Math.max(nameScore, ingredientScore), ingredient };
+      })
+      .filter(row => row.score >= 0)
+      .sort((a, b) => b.score - a.score || a.recipe.name.localeCompare(b.recipe.name, 'de'))
+      .slice(0, limit);
+  }
+
+  function findExternalSavedFood(source, sourceId, fallbackName = '') {
+    const id = String(sourceId || '');
+    const bySource = state.savedFoods.find(item => item.source === source && String(item.sourceId || '') === id);
+    if (bySource) return bySource;
+    // BLS-Einträge aus älteren Versionen konnten vor source/sourceId bereits anhand
+    // des Namens gespeichert worden sein. Nur beim BLS ist dieser Fallback sinnvoll.
+    if (source === 'bls' && fallbackName) {
+      return state.savedFoods.find(item => normalizeName(item.name) === normalizeName(fallbackName)) || null;
+    }
+    return null;
+  }
+
+  function centralAddSearchMarkup() {
+    const q = String(state.addSearch || '');
+    const online = navigator.onLine !== false;
+    return `<section class="central-add-search">
+      <div class="central-add-search-heading"><div><strong>Was möchtest du erfassen?</strong><span>Lebensmittel, Rezepte, BLS und Produkte gemeinsam durchsuchen.</span></div></div>
+      <form id="central-add-search-form" class="central-add-search-form">
+        <div class="manager-search"><span>${icon('search')}</span><input id="central-add-search-input" type="search" placeholder="z. B. Müsli oder Alpro Soja" autocomplete="off" value="${esc(q)}"></div>
+        <button type="submit" class="primary-button central-add-search-button" ${online ? '' : 'disabled'}>${icon('search')} Suchen</button>
+      </form>
+      <div class="central-add-search-caption">Eigene Lebensmittel, Rezepte und BLS erscheinen sofort. Open Food Facts wird mit „Suchen“ ergänzt.</div>
+      <div id="central-add-search-results" class="central-add-search-results">${centralAddSearchResultsMarkup(q)}</div>
+    </section>`;
+  }
+
+  function centralSearchSection(title, subtitle, body, cls = '') {
+    return `<section class="central-result-section ${cls}"><div class="central-result-heading"><strong>${title}</strong>${subtitle ? `<span>${subtitle}</span>` : ''}</div>${body}</section>`;
+  }
+
+  function centralAddSearchResultsMarkup(query) {
+    const q = normalizeName(query);
+    if (q.length < 2) return '';
+
+    const foods = centralOwnFoodResults(query);
+    const recipes = centralRecipeResults(query);
+    const bls = state.addSearchBlsResults || [];
+    const off = state.addSearchOffQuery === String(query || '').trim() ? (state.addSearchOffResults || []) : [];
+    const groups = [];
+
+    if (foods.length) {
+      groups.push(centralSearchSection('Meine Lebensmittel', `${foods.length} Treffer`, `<div class="central-result-list">${foods.map(food => {
+        const parts = [`${fmt(food.calories, 0)} kcal`];
+        if (food.protein != null) parts.push(`${fmt(food.protein)} g Protein`);
+        return `<button type="button" class="unified-result-card own" data-central-food-id="${esc(food.id)}"><span class="unified-result-icon">${food.favorite ? icon('star') : icon('food')}</span><span class="unified-result-copy"><strong>${esc(food.name)}</strong><small>${esc(amountLabel(food.baseAmount || 1, food.baseUnit || 'portion'))} · ${parts.join(' · ')}</small><span>Gespeichertes Lebensmittel · direkt erfassen</span></span><span class="chev">›</span></button>`;
+      }).join('')}</div>`, 'own'));
+    }
+
+    if (recipes.length) {
+      groups.push(centralSearchSection('Meine Rezepte', `${recipes.length} Treffer`, `<div class="central-result-list">${recipes.map(({ recipe, ingredient }) => {
+        const per = recipePerPortion(recipe);
+        const viaIngredient = ingredient && !normalizeName(recipe.name).includes(q);
+        return `<button type="button" class="unified-result-card recipe" data-central-recipe-id="${esc(recipe.id)}"><span class="unified-result-icon">${icon('recipe')}</span><span class="unified-result-copy"><strong>${esc(recipe.name)}</strong><small>${recipeNutrientLine(per)}</small><span>${viaIngredient ? `enthält ${esc(ingredient.name)} · ` : ''}Rezept · Portion wählen</span></span><span class="chev">›</span></button>`;
+      }).join('')}</div>`, 'recipe'));
+    }
+
+    if (state.addSearchBlsSearching) {
+      groups.push(centralSearchSection('BLS 4.0', 'lokale Referenzdatenbank', `<div class="central-search-loading"><span class="bls-spinner"></span><span>BLS wird durchsucht …</span></div>`, 'bls'));
+    } else if (bls.length) {
+      groups.push(centralSearchSection('BLS 4.0', `${bls.length} Treffer`, `<div class="central-result-list">${bls.slice(0, 6).map(food => {
+        const existing = findExternalSavedFood('bls', food.code, food.name);
+        const attr = existing ? `data-central-food-id="${esc(existing.id)}"` : `data-central-bls-code="${esc(food.code)}"`;
+        return `<button type="button" class="unified-result-card bls ${existing ? 'already-saved' : ''}" ${attr}><span class="unified-result-icon">${icon('database')}</span><span class="unified-result-copy"><strong>${esc(food.name)}</strong><small>${esc(food.code)} · ${fmtNullable(food.calories, 0, 'kcal')} · ${fmtNullable(food.protein, 1, 'g Protein')}</small><span>${existing ? '✓ bereits gespeichert · direkt erfassen' : `${food.group ? esc(food.group) : 'BLS 4.0'} · direkt erfassen`}</span></span><span class="chev">›</span></button>`;
+      }).join('')}</div>`, 'bls'));
+    }
+
+    if (state.addSearchOffSearching) {
+      groups.push(centralSearchSection('Produkte', 'Open Food Facts', `<div class="central-search-loading"><span class="bls-spinner"></span><span>Produkte werden gesucht …</span></div>`, 'off'));
+    } else if (off.length) {
+      groups.push(centralSearchSection('Produkte', `Open Food Facts · ${off.length} angezeigt`, `<div class="central-result-list">${off.slice(0, 8).map(product => {
+        const existing = findExternalSavedFood('openfoodfacts', product.code, product.name);
+        const attr = existing ? `data-central-food-id="${esc(existing.id)}"` : `data-central-off-code="${esc(product.code)}"`;
+        return `<button type="button" class="unified-result-card off ${existing ? 'already-saved' : ''}" ${attr}><span class="unified-result-icon">${icon('food')}</span><span class="unified-result-copy"><strong>${esc(product.name)}</strong><small>${product.brands ? `${esc(product.brands)} · ` : ''}${fmtNullable(product.calories, 0, 'kcal')} / 100 ${esc(product.baseUnit || 'g')}</small><span>${existing ? '✓ bereits gespeichert · direkt erfassen' : 'Open Food Facts · direkt erfassen oder zusätzlich speichern'}</span></span><span class="chev">›</span></button>`;
+      }).join('')}</div>`, 'off'));
+    } else if (state.addSearchOffQuery === String(query || '').trim() && state.addSearchOffError) {
+      groups.push(centralSearchSection('Produkte', 'Open Food Facts', `<div class="central-search-note error">${esc(state.addSearchOffError)}</div>`, 'off'));
+    } else if (!state.addSearchOffQuery) {
+      groups.push(`<div class="central-search-online-hint">${navigator.onLine === false ? 'Offline: Eigene Inhalte und BLS bleiben verfügbar.' : 'Für Markenprodukte „Suchen“ antippen. Open Food Facts wird nicht bei jedem Tastendruck abgefragt.'}</div>`);
+    }
+
+    if (!groups.length) return `<div class="central-search-note">Noch keine Treffer für „${esc(String(query || '').trim())}“.</div>`;
+    return groups.join('');
+  }
+
+  function renderCentralAddSearchResults() {
+    const root = document.getElementById('central-add-search-results');
+    if (!root) return;
+    root.innerHTML = centralAddSearchResultsMarkup(state.addSearch);
+    bindCentralSearchResults(root);
+  }
+
+  function bindCentralSearchResults(root) {
+    if (!root) return;
+    root.querySelectorAll('[data-central-food-id]').forEach(btn => btn.onclick = () => {
+      state.addSearch = '';
+      state.addSearchBlsResults = [];
+      state.addSearchOffResults = [];
+      state.addSearchOffQuery = '';
+      selectSavedFood(btn.dataset.centralFoodId);
+    });
+    root.querySelectorAll('[data-central-recipe-id]').forEach(btn => btn.onclick = () => {
+      state.addSearch = '';
+      setView('recipeLog', { selectedRecipeId: btn.dataset.centralRecipeId, recipeLogOrigin: 'add' });
+    });
+    root.querySelectorAll('[data-central-bls-code]').forEach(btn => btn.onclick = async () => {
+      try {
+        const foods = await window.MampfoBLS?.allFoods?.();
+        const food = (foods || []).find(item => item.code === btn.dataset.centralBlsCode);
+        if (!food) return showToast('BLS-Lebensmittel nicht gefunden.');
+        openExternalFoodLog('bls', food);
+      } catch (error) {
+        showToast(error.message || 'BLS-Lebensmittel konnte nicht geöffnet werden.');
+      }
+    });
+    root.querySelectorAll('[data-central-off-code]').forEach(btn => btn.onclick = () => {
+      const product = (state.addSearchOffResults || []).find(item => String(item.code) === String(btn.dataset.centralOffCode));
+      if (!product) return showToast('Produkt nicht mehr in der Trefferliste.');
+      openExternalFoodLog('openfoodfacts', product);
+    });
+  }
+
+  function bindCentralAddSearch() {
+    const form = document.getElementById('central-add-search-form');
+    const input = document.getElementById('central-add-search-input');
+    if (!form || !input) return;
+    input.addEventListener('input', event => {
+      const previous = String(state.addSearch || '').trim();
+      state.addSearch = event.target.value;
+      const current = String(state.addSearch || '').trim();
+      if (current !== previous) {
+        state.addSearchOffResults = [];
+        state.addSearchOffMeta = null;
+        state.addSearchOffError = '';
+        state.addSearchOffQuery = '';
+      }
+      refreshCentralAddSearch({ includeOff: false });
+    });
+    form.addEventListener('submit', event => {
+      event.preventDefault();
+      state.addSearch = input.value;
+      refreshCentralAddSearch({ includeOff: true });
+    });
+    bindCentralSearchResults(document.getElementById('central-add-search-results'));
+  }
+
+  async function refreshCentralAddSearch(options = {}) {
+    const query = String(state.addSearch || '').trim();
+    const q = normalizeName(query);
+    const token = ++state.addSearchToken;
+    if (q.length < 2) {
+      state.addSearchBlsResults = [];
+      state.addSearchOffResults = [];
+      state.addSearchOffMeta = null;
+      state.addSearchOffError = '';
+      state.addSearchOffQuery = '';
+      state.addSearchBlsSearching = false;
+      state.addSearchOffSearching = false;
+      renderCentralAddSearchResults();
+      return;
+    }
+
+    if (!options.preserveOff && state.addSearchOffQuery && state.addSearchOffQuery !== query) {
+      state.addSearchOffResults = [];
+      state.addSearchOffMeta = null;
+      state.addSearchOffError = '';
+      state.addSearchOffQuery = '';
+    }
+
+    state.addSearchBlsSearching = Boolean(window.MampfoBLS?.search);
+    if (options.includeOff) {
+      state.addSearchOffSearching = Boolean(window.MampfoOFF?.search && navigator.onLine !== false);
+      state.addSearchOffError = '';
+      state.addSearchOffQuery = query;
+    }
+    renderCentralAddSearchResults();
+
+    if (window.MampfoBLS?.search) {
+      try {
+        const results = await window.MampfoBLS.search(query, 6);
+        if (token !== state.addSearchToken || String(state.addSearch || '').trim() !== query) return;
+        state.addSearchBlsResults = results || [];
+      } catch {
+        if (token !== state.addSearchToken) return;
+        state.addSearchBlsResults = [];
+      } finally {
+        if (token === state.addSearchToken) {
+          state.addSearchBlsSearching = false;
+          renderCentralAddSearchResults();
+        }
+      }
+    } else {
+      state.addSearchBlsSearching = false;
+    }
+
+    if (options.includeOff) {
+      if (!window.MampfoOFF?.search) {
+        state.addSearchOffSearching = false;
+        state.addSearchOffError = 'Open-Food-Facts-Modul ist nicht verfügbar.';
+        renderCentralAddSearchResults();
+        return;
+      }
+      if (navigator.onLine === false) {
+        state.addSearchOffSearching = false;
+        state.addSearchOffError = 'Offline: Die Produktsuche benötigt eine Internetverbindung.';
+        renderCentralAddSearchResults();
+        return;
+      }
+      try {
+        const result = await window.MampfoOFF.search(query, 1);
+        if (token !== state.addSearchToken || String(state.addSearch || '').trim() !== query) return;
+        state.addSearchOffResults = result.products || [];
+        state.addSearchOffMeta = result;
+        state.addSearchOffError = '';
+      } catch (error) {
+        if (token !== state.addSearchToken) return;
+        state.addSearchOffResults = [];
+        state.addSearchOffMeta = null;
+        state.addSearchOffError = error.message || 'Open Food Facts konnte nicht abgefragt werden.';
+      } finally {
+        if (token === state.addSearchToken) {
+          state.addSearchOffSearching = false;
+          renderCentralAddSearchResults();
+        }
+      }
+    }
+  }
+
+  function externalFoodModel(source, item) {
+    if (source === 'bls') {
+      return {
+        source: 'bls', sourceId: String(item.code), sourceVersion: '4.0', sourceAttribution: window.MampfoBLS?.attribution || 'BLS 4.0',
+        name: item.name, baseAmount: 100, baseUnit: 'g', calories: item.calories,
+        protein: item.protein ?? null, fiber: item.fiber ?? null, fat: item.fat ?? null, carbohydrates: item.carbohydrates ?? null,
+        sourceBrand: null, sourceQuantity: null, sourceMeta: `BLS-Code ${item.code}${item.group ? ` · ${item.group}` : ''}`
+      };
+    }
+    return {
+      source: 'openfoodfacts', sourceId: String(item.code), sourceVersion: 'live', sourceAttribution: window.MampfoOFF?.attribution || 'Open Food Facts',
+      name: item.name, baseAmount: 100, baseUnit: item.baseUnit || 'g', calories: item.calories,
+      protein: item.protein ?? null, fiber: item.fiber ?? null, fat: item.fat ?? null, carbohydrates: item.carbohydrates ?? null,
+      sourceBrand: item.brands || null, sourceQuantity: item.quantity || null,
+      sourceMeta: `${item.brands ? `${item.brands} · ` : ''}Barcode ${item.code}${item.quantity ? ` · ${item.quantity}` : ''}`
+    };
+  }
+
+  function scaledExternalFoodValues(model, amount) {
+    const base = Number(model.baseAmount || 100);
+    const factor = Number(amount) / (base > 0 ? base : 100);
+    const values = {};
+    NUTRIENT_KEYS.forEach(key => { values[key] = model[key] == null ? null : cleanNumber(Number(model[key]) * factor); });
+    return values;
+  }
+
+  function externalFoodPreviewMarkup(model, amount) {
+    const values = scaledExternalFoodValues(model, amount);
+    return `<div class="external-log-preview"><small>Für ${esc(amountLabel(amount, model.baseUnit))}</small><strong>${fmtNullable(values.calories, 0, 'kcal')}</strong><span>${values.protein == null ? 'Protein offen' : `${fmt(values.protein)} g Protein`} · ${values.fiber == null ? 'Ballaststoffe offen' : `${fmt(values.fiber)} g Ballaststoffe`}</span>${values.fat != null || values.carbohydrates != null ? `<span>${values.fat != null ? `${fmt(values.fat)} g Fett` : 'Fett offen'} · ${values.carbohydrates != null ? `${fmt(values.carbohydrates)} g Kohlenhydrate` : 'Kohlenhydrate offen'}</span>` : ''}</div>`;
+  }
+
+  function openExternalFoodLog(source, item) {
+    const model = externalFoodModel(source, item);
+    const existing = findExternalSavedFood(model.source, model.sourceId, model.name);
+    if (existing) {
+      modalRoot.innerHTML = '';
+      state.addSearch = '';
+      return selectSavedFood(existing.id);
+    }
+    if (model.calories == null) return showToast('Für diesen Treffer fehlt der Energie-Wert. Er kann nicht direkt erfasst werden.');
+
+    modalRoot.innerHTML = `<div class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="external-log-title"><div class="modal external-log-modal">
+      <div class="modal-icon ${source === 'bls' ? 'sage' : 'apricot'}">${icon(source === 'bls' ? 'database' : 'food')}</div>
+      <h2 id="external-log-title">${esc(model.name)}</h2>
+      <p class="off-detail-meta">${esc(model.sourceMeta)}</p>
+      <label class="modal-field"><span>Menge</span><div class="amount-unit-row"><input id="external-log-amount" type="text" inputmode="decimal" value="${inputNumber(model.baseAmount, 2)}"><input type="text" value="${esc(unitLabel(model.baseUnit, model.baseAmount))}" disabled></div></label>
+      <div id="external-log-preview">${externalFoodPreviewMarkup(model, model.baseAmount)}</div>
+      <label class="modal-field"><span>Datum</span><input id="external-log-date" type="date" value="${esc(state.selectedDate)}"></label>
+      <label class="modal-field"><span>Uhrzeit</span><input id="external-log-time" type="time" value="${esc(nowTime())}"></label>
+      <p class="modal-note">„Nur erfassen“ legt nur den Tagebucheintrag an. „Erfassen & speichern“ übernimmt den Treffer zusätzlich mit seiner ${esc(amountLabel(model.baseAmount, model.baseUnit))}-Basis in „Meine Lebensmittel“.</p>
+      <div class="form-actions">
+        <button class="primary-button" type="button" id="external-log-only">Nur erfassen</button>
+        <button class="secondary-button" type="button" id="external-log-save">${icon('save')} Erfassen & speichern</button>
+        <button class="secondary-button" type="button" id="external-log-cancel">Abbrechen</button>
+      </div>
+    </div></div>`;
+
+    const updatePreview = () => {
+      const amount = parseNum(document.getElementById('external-log-amount')?.value);
+      const target = document.getElementById('external-log-preview');
+      if (!target) return;
+      target.innerHTML = amount != null && amount > 0 ? externalFoodPreviewMarkup(model, amount) : '<div class="central-search-note">Bitte eine gültige Menge eingeben.</div>';
+    };
+    document.getElementById('external-log-amount').addEventListener('input', updatePreview);
+    document.getElementById('external-log-cancel').onclick = () => { modalRoot.innerHTML = ''; };
+    document.getElementById('external-log-only').onclick = () => commitExternalFoodLog(model, false);
+    document.getElementById('external-log-save').onclick = () => commitExternalFoodLog(model, true);
+  }
+
+  function createSavedExternalFood(model) {
+    const now = new Date().toISOString();
+    return {
+      id: uuid(), name: model.name,
+      calories: model.calories, protein: model.protein, fiber: model.fiber, fat: model.fat, carbohydrates: model.carbohydrates,
+      baseAmount: model.baseAmount || 100, baseUnit: model.baseUnit || 'g', favorite: false, usageCount: 0, lastUsedAt: null,
+      source: model.source, sourceId: model.sourceId, sourceVersion: model.sourceVersion, sourceAttribution: model.sourceAttribution,
+      sourceBrand: model.sourceBrand || null, sourceQuantity: model.sourceQuantity || null,
+      createdAt: now, updatedAt: now
+    };
+  }
+
+  function commitExternalFoodLog(model, saveToFoods) {
+    const amount = parseNum(document.getElementById('external-log-amount')?.value);
+    const date = document.getElementById('external-log-date')?.value;
+    const time = document.getElementById('external-log-time')?.value;
+    if (amount == null || amount <= 0) return showToast('Bitte eine gültige Menge eingeben.');
+    if (!date || !time) return showToast('Bitte Datum und Uhrzeit angeben.');
+    const nutrients = scaledExternalFoodValues(model, amount);
+    const values = { name: model.name, amount: cleanNumber(amount, 3), unit: model.baseUnit, ...nutrients, date, time };
+
+    const commit = () => {
+      const now = new Date().toISOString();
+      let savedFood = saveToFoods ? findExternalSavedFood(model.source, model.sourceId, model.name) : null;
+      if (saveToFoods && !savedFood) {
+        savedFood = createSavedExternalFood(model);
+        state.savedFoods.push(savedFood);
+      }
+      const entry = {
+        id: uuid(), ...values,
+        source: savedFood ? 'savedFood' : 'manual',
+        foodId: savedFood ? savedFood.id : null,
+        recipeId: null,
+        createdAt: now, updatedAt: now
+      };
+      state.entries.push(entry);
+      state.selectedDate = date;
+      if (savedFood) registerFoodUse(savedFood, entry);
+      state.addSearch = '';
+      state.addSearchBlsResults = [];
+      state.addSearchOffResults = [];
+      state.addSearchOffMeta = null;
+      state.addSearchOffError = '';
+      state.addSearchOffQuery = '';
+      finishNewEntry(savedFood ? 'Eintrag und Lebensmittel gespeichert.' : 'Eintrag gespeichert.');
+    };
+
+    resolveFastingConflictBeforeFoodSave({ date, time }, commit);
   }
 
   function addTabs() {
@@ -801,7 +1201,7 @@
       ${selectedFood ? `<div class="selected-template"><span>${icon('star')}</span><div><small>Aus gespeicherten Lebensmitteln · ${esc(amountLabel(selectedFood.baseAmount || 1, selectedFood.baseUnit || 'portion'))}</small><strong>${esc(selectedFood.name)}</strong></div><button type="button" id="clear-template" aria-label="Vorlage entfernen">×</button></div>` : ''}
       ${recipeSnapshot ? `<div class="selected-template recipe-selected"><span>${icon('recipe')}</span><div><small>Rezept-Eintrag · ${esc(amountLabel(editing.amount || 1, 'portion'))}${linkedRecipe ? ' · Rezept weiterhin vorhanden' : ' · Rezept-Snapshot'}</small><strong>${esc(editing.name)}</strong></div></div>` : ''}
       <form id="food-form" class="form-card">
-        ${fieldRow(icon('food'), 'Essen', `<textarea id="name" autocomplete="off" placeholder="z. B. Roggenbrot mit Käse">${esc(initial.name)}</textarea><div id="suggestions" class="suggestions" aria-live="polite"></div><p class="input-help">Ab zwei Zeichen zeigt Mampfo passende gespeicherte Lebensmittel an.</p>`)}
+        ${fieldRow(icon('food'), 'Essen', `<textarea id="name" autocomplete="off" placeholder="z. B. Roggenbrot mit Käse">${esc(initial.name)}</textarea><div id="suggestions" class="suggestions" aria-live="polite"></div><p class="input-help">Hier erscheinen weiterhin passende eigene Lebensmittel. Die gemeinsame Suche oben findet zusätzlich Rezepte, BLS und Produkte.</p>`)}
         ${fieldRow(icon('scale'), 'Menge', `<div class="amount-unit-row"><input id="amount" type="text" inputmode="decimal" value="${inputNumber(initial.amount ?? 1, 2)}" placeholder="1"><select id="unit" ${(scalableFood || recipeSnapshot) ? 'disabled' : ''} aria-label="Einheit">${unitOptions}</select></div>${quantityHint}`)}
         ${fieldRow(icon('flame'), 'Kalorien (kcal)', `<input id="calories" type="text" inputmode="decimal" value="${inputNumber(initial.calories, 2)}" placeholder="0">`)}
         ${fieldRow(icon('protein'), 'Protein (g)', `<input id="protein" type="text" inputmode="decimal" value="${inputNumber(initial.protein, 2)}" placeholder="optional">`)}
