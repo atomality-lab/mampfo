@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.7.2.4 – Veraltete Löschmarken bereinigt
+
+### Korrigiert
+- bereits erfolgreich synchronisierte lokale Löschmarken werden nach einem bestätigten Sync entfernt
+- abgearbeitete Löschmarken lösen nicht länger dauerhaft „Lokaler Stand muss abgeglichen werden“ aus
+- ein manueller Sync mit `↑ 0 / ↓ 0` kann dadurch den Status korrekt auf „Alles aktuell“ stabilisieren
+- echte noch nicht übertragene Löschungen bleiben weiterhin als Sync-Bedarf erhalten
+- keine Änderung an Cloud-Schema, Datenmodell oder Konfliktlogik
+- Service-Worker-Cache auf v0.7.2.4 aktualisiert
+
 ## v0.7.2.3 – Kosmetischer Sync-Status-Patch
 
 ### Korrigiert

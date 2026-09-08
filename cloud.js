@@ -841,7 +841,7 @@
     }], 'user_id');
   }
 
-  async function initializeCloud(appVersion = '0.7.2.3') {
+  async function initializeCloud(appVersion = '0.7.2.4') {
     const user = await getUser();
     if (!user?.id) throw new Error('Die Anmeldung konnte nicht bestätigt werden.');
     const before = await cloudCounts();
@@ -884,7 +884,7 @@
     return await cloudCounts();
   }
 
-  async function performSync(appVersion = '0.7.2.3', reason = 'manual') {
+  async function performSync(appVersion = '0.7.2.4', reason = 'manual') {
     const user = await getUser();
     if (!user?.id) throw new Error('Bitte zuerst bei Mampfo Cloud anmelden.');
     const counts = await cloudCounts();
@@ -997,6 +997,13 @@
             downloaded += 1;
             changedLocal = true;
           }
+          // v0.7.2.4: Eine bereits vollständig abgearbeitete Löschmarke darf
+          // nicht dauerhaft den Status "Abgleich nötig" erzeugen. Wenn lokaler
+          // Effektivzustand, Cloud und Baseline bereits identisch sind, ist die
+          // Marke redundant und kann sicher entfernt werden.
+          if (explicitDeletion && statesEqual(localState, remoteState) && statesEqual(remoteState, baseState)) {
+            clearDeletion(collection, id, user.id);
+          }
           continue;
         }
         if (localChanged && !remoteChanged) {
@@ -1082,7 +1089,7 @@
     return { uploaded, downloaded, conflicts: nextConflicts.length, changedLocal, lastSyncAt: stamp };
   }
 
-  async function syncNow(appVersion = '0.7.2.3', options = {}) {
+  async function syncNow(appVersion = '0.7.2.4', options = {}) {
     if (syncPromise) return syncPromise;
     const reason = options.reason || 'manual';
     const userId = currentUser()?.id;
@@ -1231,8 +1238,11 @@
         const baseEntry = baseMap[id] || null;
         const deletion = deletionMap[id] || null;
 
-        // Eine ausdrückliche lokale Löschung muss noch übertragen werden.
-        if (deletion) return true;
+        // Eine ausdrückliche lokale Löschung muss nur solange als offen gelten,
+        // wie sie nicht bereits in der Sync-Basis als gelöscht bestätigt ist.
+        // Alte, abgearbeitete Marker aus früheren Versionen erzeugen damit
+        // keinen dauerhaften falschen Alarm mehr.
+        if (deletion && !baseEntry?.deleted) return true;
 
         // Neuer lokaler Datensatz, der noch nicht Teil der Sync-Basis ist.
         if (localRecord && !baseEntry) return true;
