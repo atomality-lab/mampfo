@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.8.0 – Barcode-Scanner
+
+- Barcode-Button direkt in der zentralen Erfassungssuche.
+- Kamera-Scan für EAN-13, EAN-8, UPC-A und UPC-E.
+- Android/Samsung nutzt wenn verfügbar die Browser-Barcode-Erkennung; andere Browser erhalten einen ZXing-Fallback.
+- Open Food Facts wird nach einem Scan direkt über den Barcode abgefragt.
+- Bereits gespeicherte Produkte werden erkannt und direkt über die persönliche Lebensmittelvorlage geöffnet.
+- Neue Produkte können wie in v0.7.3 direkt „Nur erfassen“ oder „Erfassen & speichern“ genutzt werden.
+- Manuelle Barcode-Eingabe als Fallback bei fehlender Kamera/Berechtigung.
+- Nicht hinterlegte Barcodes können direkt in die manuelle Erfassung wechseln.
+- Keine Änderung am Supabase-Schema.
+
 ## v0.7.3 – zentrale Erfassungssuche
 
 - Neue gemeinsame Suche unter **Erfassen** für eigene Lebensmittel, eigene Rezepte, BLS 4.0 und Open Food Facts.

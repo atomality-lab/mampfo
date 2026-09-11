@@ -1,4 +1,10 @@
-# Mampfo v0.7.3
+# Mampfo v0.8.0
+
+## Barcode-Scanner (v0.8.0)
+
+Unter **Erfassen** steht neben der zentralen Suche **Barcode scannen** zur Verfügung. Mampfo nutzt die Rückkamera, erkennt typische Lebensmittel-Barcodes (EAN/UPC) und fragt anschließend Open Food Facts ab. Ein gefundener Treffer kann direkt erfasst oder gleichzeitig in **Meine Lebensmittel** gespeichert werden. Bereits gespeicherte Produkte werden über den Barcode erkannt und nicht doppelt angelegt.
+
+Die Kamera benötigt HTTPS und eine Browser-Berechtigung. Falls der Kamerazugriff nicht möglich ist, kann die Barcode-Nummer manuell eingegeben werden. Ist ein erkannter Barcode bei Open Food Facts noch nicht hinterlegt, kann direkt zur manuellen Lebensmittelerfassung gewechselt werden. Auf Browsern ohne native Barcode-Erkennung lädt Mampfo bei Bedarf die feste ZXing-Browser-Version 0.2.1 als Kompatibilitäts-Fallback. Für die Produktabfrage selbst ist eine Internetverbindung erforderlich.
 
 
 ## Neu in v0.7.3 – eine Suche für alles Essbare

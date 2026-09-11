@@ -2,6 +2,7 @@
   'use strict';
 
   const SEARCH_URL = 'https://world.openfoodfacts.org/cgi/search.pl';
+  const PRODUCT_URL = 'https://world.openfoodfacts.org/api/v2/product';
   const SOURCE_URL = 'https://world.openfoodfacts.org/';
   const ATTRIBUTION = 'Open Food Facts – offene Produktdatenbank (ODbL)';
   const PAGE_SIZE = 20;
@@ -132,8 +133,39 @@
     };
   }
 
+
+  async function lookupBarcode(barcode) {
+    const code = String(barcode || '').replace(/[^0-9]/g, '');
+    if (code.length < 8 || code.length > 14) throw new Error('Der Barcode muss 8 bis 14 Ziffern enthalten.');
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      throw new Error('Die Barcode-Suche benötigt eine Internetverbindung.');
+    }
+    const url = `${PRODUCT_URL}/${encodeURIComponent(code)}.json?fields=${encodeURIComponent(FIELDS.join(','))}&lc=de`;
+    let response;
+    try {
+      response = await fetch(url, { method: 'GET', mode: 'cors', cache: 'no-store', headers: { 'Accept': 'application/json' } });
+    } catch {
+      throw new Error('Open Food Facts ist gerade nicht erreichbar. Bitte später erneut versuchen.');
+    }
+    if (response.status === 404) return { found: false, code, product: null };
+    if (!response.ok) {
+      if (response.status === 429) throw new Error('Zu viele Anfragen. Bitte kurz warten und erneut versuchen.');
+      throw new Error(`Open Food Facts konnte nicht abgefragt werden (${response.status}).`);
+    }
+    const contentType = String(response.headers.get('content-type') || '').toLowerCase();
+    const rawText = await response.text();
+    if (!contentType.includes('json')) throw new Error('Open Food Facts hat ein unerwartetes Antwortformat geliefert.');
+    let payload;
+    try { payload = JSON.parse(rawText); }
+    catch { throw new Error('Die Antwort von Open Food Facts konnte nicht gelesen werden.'); }
+    if (!payload?.product || Number(payload.status ?? 1) === 0) return { found: false, code, product: null };
+    const product = normalizeProduct({ ...payload.product, code: payload.product.code || payload.code || code });
+    if (!product.code) product.code = code;
+    return { found: Boolean(product.name), code, product };
+  }
   window.MampfoOFF = {
     search,
+    lookupBarcode,
     normalizeProduct,
     sourceUrl: SOURCE_URL,
     attribution: ATTRIBUTION,

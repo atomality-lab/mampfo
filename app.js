@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const CFG = window.APP_CONFIG || { appName: 'Mampfo', version: '0.7.3' };
+  const CFG = window.APP_CONFIG || { appName: 'Mampfo', version: '0.8.0' };
   const STORAGE = {
     settings: 'mampfo.settings.v2',
     entries: 'mampfo.entries.v2',
@@ -507,7 +507,7 @@
     const map = {
       settings: '⚙', calendar: '▣', prev: '‹', next: '›', flame: '♨', protein: '💪', leaf: '♧', clock: '◷',
       plus: '＋', home: '⌂', recipe: '▤', fasting: '☾', stats: '▥', back: '←', edit: '✎', trash: '♲',
-      food: '♜', scale: '↔', drop: '◒', carbs: '◇', target: '◎', rocket: '↗', star: '★', starEmpty: '☆', recent: '◷', search: '⌕', list: '☷', portions: '◫', bowl: '◡', save: '✓', moon: '☾', sun: '☼', plan: '◴', database: '◎'
+      food: '♜', scale: '↔', drop: '◒', carbs: '◇', target: '◎', rocket: '↗', star: '★', starEmpty: '☆', recent: '◷', search: '⌕', list: '☷', portions: '◫', bowl: '◡', save: '✓', moon: '☾', sun: '☼', plan: '◴', database: '◎', barcode: '▥'
     };
     return map[name] || '•';
   }
@@ -799,8 +799,9 @@
       <form id="central-add-search-form" class="central-add-search-form">
         <div class="manager-search"><span>${icon('search')}</span><input id="central-add-search-input" type="search" placeholder="z. B. Müsli oder Alpro Soja" autocomplete="off" value="${esc(q)}"></div>
         <button type="submit" class="primary-button central-add-search-button" ${online ? '' : 'disabled'}>${icon('search')} Suchen</button>
+        <button type="button" class="secondary-button central-barcode-button" id="central-barcode-scan">${icon('barcode')} Barcode scannen</button>
       </form>
-      <div class="central-add-search-caption">Eigene Lebensmittel, Rezepte und BLS erscheinen sofort. Open Food Facts wird mit „Suchen“ ergänzt.</div>
+      <div class="central-add-search-caption">Eigene Lebensmittel, Rezepte und BLS erscheinen sofort. Open Food Facts wird mit „Suchen“ ergänzt. Ein Barcode kann direkt über die Kamera gesucht werden.</div>
       <div id="central-add-search-results" class="central-add-search-results">${centralAddSearchResultsMarkup(q)}</div>
     </section>`;
   }
@@ -921,6 +922,8 @@
       state.addSearch = input.value;
       refreshCentralAddSearch({ includeOff: true });
     });
+    const barcodeButton = document.getElementById('central-barcode-scan');
+    if (barcodeButton) barcodeButton.onclick = openBarcodeScanner;
     bindCentralSearchResults(document.getElementById('central-add-search-results'));
   }
 
@@ -1123,6 +1126,152 @@
     };
 
     resolveFastingConflictBeforeFoodSave({ date, time }, commit);
+  }
+
+  let barcodeScanBusy = false;
+  let barcodeLookupInProgress = false;
+
+  function normalizeBarcode(value) {
+    return String(value || '').replace(/[^0-9]/g, '');
+  }
+
+  function barcodeLooksPlausible(value) {
+    const code = normalizeBarcode(value);
+    return code.length >= 8 && code.length <= 14;
+  }
+
+  function stopBarcodeScanner() {
+    barcodeScanBusy = false;
+    try { window.MampfoBarcode?.stop?.(); } catch {}
+  }
+
+  function closeBarcodeScanner() {
+    barcodeLookupInProgress = false;
+    stopBarcodeScanner();
+    modalRoot.innerHTML = '';
+  }
+
+  function barcodeStatus(message, type = '') {
+    const node = document.getElementById('barcode-scan-status');
+    if (!node) return;
+    node.className = `barcode-scan-status${type ? ` ${type}` : ''}`;
+    node.textContent = message;
+  }
+
+  function openBarcodeScanner() {
+    barcodeLookupInProgress = false;
+    stopBarcodeScanner();
+    modalRoot.innerHTML = `<div class="modal-backdrop barcode-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="barcode-scan-title"><div class="modal barcode-modal">
+      <div class="modal-icon apricot">${icon('barcode')}</div>
+      <h2 id="barcode-scan-title">Barcode scannen</h2>
+      <p>Halte den EAN- oder UPC-Code gut sichtbar vor die Kamera. Nach dem Scan sucht Mampfo das Produkt direkt bei Open Food Facts.</p>
+      <div class="barcode-camera-wrap">
+        <video id="barcode-video" class="barcode-video" autoplay muted playsinline></video>
+        <div class="barcode-target" aria-hidden="true"><span></span></div>
+      </div>
+      <div id="barcode-scan-status" class="barcode-scan-status">Kamera wird vorbereitet …</div>
+      <form id="barcode-manual-form" class="barcode-manual-form">
+        <label class="modal-field"><span>Oder Barcode-Nummer eingeben</span><input id="barcode-manual-input" type="text" inputmode="numeric" autocomplete="off" placeholder="z. B. 4001724819806"></label>
+        <button type="submit" class="secondary-button">Nummer nachschlagen</button>
+      </form>
+      <div class="form-actions">
+        <button class="primary-button" type="button" id="barcode-manual-food" hidden>Produkt manuell erfassen</button>
+        <button class="secondary-button" type="button" id="barcode-restart">Kamera neu starten</button>
+        <button class="secondary-button" type="button" id="barcode-close">Abbrechen</button>
+      </div>
+    </div></div>`;
+
+    document.getElementById('barcode-close').onclick = closeBarcodeScanner;
+    document.getElementById('barcode-restart').onclick = () => { barcodeLookupInProgress = false; startBarcodeScanner(); };
+    document.getElementById('barcode-manual-food').onclick = () => {
+      closeBarcodeScanner();
+      state.addSearch = '';
+      state.addTab = 'input';
+      state.selectedSavedFoodId = null;
+      render();
+    };
+    document.getElementById('barcode-manual-form').onsubmit = event => {
+      event.preventDefault();
+      const code = normalizeBarcode(document.getElementById('barcode-manual-input')?.value);
+      if (!barcodeLooksPlausible(code)) return barcodeStatus('Bitte einen Barcode mit 8 bis 14 Ziffern eingeben.', 'error');
+      handleBarcodeDetected(code);
+    };
+    modalRoot.querySelector('.barcode-modal-backdrop')?.addEventListener('click', event => {
+      if (event.target.classList.contains('barcode-modal-backdrop')) closeBarcodeScanner();
+    });
+    startBarcodeScanner();
+  }
+
+  async function startBarcodeScanner() {
+    if (barcodeScanBusy || barcodeLookupInProgress) return;
+    stopBarcodeScanner();
+    const video = document.getElementById('barcode-video');
+    if (!video) return;
+    if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+      barcodeStatus('Die Kamera ist in diesem Browser nicht verfügbar. Du kannst die Barcode-Nummer unten eingeben.', 'error');
+      return;
+    }
+    barcodeScanBusy = true;
+    barcodeStatus('Kamera wird gestartet …');
+    try {
+      await window.MampfoBarcode?.start?.(video, code => handleBarcodeDetected(code), message => barcodeStatus(message));
+      if (barcodeScanBusy) barcodeStatus('Barcode in den Rahmen halten.');
+    } catch (error) {
+      barcodeScanBusy = false;
+      const msg = error?.name === 'NotAllowedError'
+        ? 'Kamerazugriff wurde nicht erlaubt. Du kannst die Berechtigung ändern oder die Barcode-Nummer unten eingeben.'
+        : (error?.message || 'Die Kamera konnte nicht gestartet werden. Barcode-Nummer bitte manuell eingeben.');
+      barcodeStatus(msg, 'error');
+    }
+  }
+
+  async function handleBarcodeDetected(rawCode) {
+    if (barcodeLookupInProgress) return;
+    if (!barcodeScanBusy && !document.getElementById('barcode-scan-title')) return;
+    const code = normalizeBarcode(rawCode);
+    if (!barcodeLooksPlausible(code)) {
+      barcodeStatus('Der erkannte Code sieht nicht wie ein Produktbarcode aus. Bitte erneut versuchen.', 'error');
+      return;
+    }
+    barcodeScanBusy = false;
+    barcodeLookupInProgress = true;
+    try { await window.MampfoBarcode?.stop?.(); } catch {}
+    barcodeStatus(`Barcode ${code} erkannt. Produkt wird gesucht …`);
+    if (!window.MampfoOFF?.lookupBarcode) {
+      barcodeLookupInProgress = false;
+      barcodeStatus('Open-Food-Facts-Modul ist nicht verfügbar.', 'error');
+      return;
+    }
+    if (navigator.onLine === false) {
+      barcodeLookupInProgress = false;
+      barcodeStatus(`Barcode ${code} erkannt. Für die Produktsuche wird eine Internetverbindung benötigt.`, 'error');
+      return;
+    }
+    try {
+      const result = await window.MampfoOFF.lookupBarcode(code);
+      if (!result?.found || !result.product) {
+        barcodeStatus(`Barcode ${code} wurde erkannt, ist bei Open Food Facts aber noch nicht hinterlegt.`, 'not-found');
+        const input = document.getElementById('barcode-manual-input');
+        if (input) input.value = code;
+        const manualButton = document.getElementById('barcode-manual-food');
+        if (manualButton) manualButton.hidden = false;
+        barcodeLookupInProgress = false;
+        return;
+      }
+      const product = result.product;
+      const existing = findExternalSavedFood('openfoodfacts', product.code, product.name);
+      closeBarcodeScanner();
+      if (existing) {
+        state.addSearch = '';
+        showToast('Produkt bereits gespeichert.');
+        selectSavedFood(existing.id);
+      } else {
+        openExternalFoodLog('openfoodfacts', product);
+      }
+    } catch (error) {
+      barcodeLookupInProgress = false;
+      barcodeStatus(error?.message || 'Das Produkt konnte nicht abgefragt werden.', 'error');
+    }
   }
 
   function addTabs() {

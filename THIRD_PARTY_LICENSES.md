@@ -24,3 +24,11 @@ Mampfo v0.7.2 enthält keine Kopie der vollständigen BLS-Daten. Die Nutzerin bz
 **Inhalte:** Database Contents License; Produktbilder werden in v0.7.2 nicht in Mampfo übernommen.
 
 Mampfo weist Open Food Facts in der Produktoberfläche als Quelle aus. Die Produktdaten werden von Herstellern und Community-Mitgliedern gepflegt; Vollständigkeit und Aktualität können daher variieren.
+
+
+## ZXing Browser
+
+Mampfo v0.8.0 kann bei Browsern ohne native Barcode-Erkennung zur Laufzeit **@zxing/browser 0.2.1** von jsDelivr laden. Das Projekt steht unter der MIT-Lizenz. Der Barcode-Decoder basiert auf ZXing.
+
+Quelle: https://github.com/zxing-js/browser
+Lizenz: MIT

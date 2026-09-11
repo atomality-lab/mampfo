@@ -2030,3 +2030,39 @@ button { cursor: pointer; }
   .central-add-search-form { grid-template-columns: 1fr; }
   .central-add-search-button { width: 100%; min-height: 46px; }
 }
+
+
+/* v0.8.0 – Barcode-Scanner */
+.central-add-search-form { grid-template-columns: minmax(0,1fr) auto auto; }
+.central-barcode-button { width: auto; min-height: 52px; white-space: nowrap; padding-inline: 14px; }
+.barcode-modal { max-height: calc(100dvh - 28px); overflow: auto; }
+.barcode-camera-wrap {
+  position: relative; overflow: hidden; width: 100%; aspect-ratio: 4 / 3; margin: 10px 0;
+  border-radius: 18px; background: #1e2823; border: 1px solid #d9dedb;
+}
+.barcode-video { width: 100%; height: 100%; object-fit: cover; display: block; background: #1e2823; }
+.barcode-target { position: absolute; inset: 22% 8%; border: 2px solid rgba(255,255,255,.86); border-radius: 14px; box-shadow: 0 0 0 999px rgba(20,28,24,.18); pointer-events: none; }
+.barcode-target::before, .barcode-target::after, .barcode-target span::before, .barcode-target span::after {
+  content: ''; position: absolute; width: 28px; height: 28px; border-color: var(--apricot); border-style: solid;
+}
+.barcode-target::before { left: -3px; top: -3px; border-width: 4px 0 0 4px; border-radius: 12px 0 0 0; }
+.barcode-target::after { right: -3px; top: -3px; border-width: 4px 4px 0 0; border-radius: 0 12px 0 0; }
+.barcode-target span::before { left: -3px; bottom: -3px; border-width: 0 0 4px 4px; border-radius: 0 0 0 12px; }
+.barcode-target span::after { right: -3px; bottom: -3px; border-width: 0 4px 4px 0; border-radius: 0 0 12px 0; }
+.barcode-scan-status { margin: 8px 0 12px; padding: 10px 12px; border-radius: 13px; background: var(--sage-pale); color: var(--text-2); font-size: .72rem; line-height: 1.4; }
+.barcode-scan-status.error { background: #fff1ec; color: #895f51; }
+.barcode-scan-status.not-found { background: var(--apricot-pale); color: #80614d; }
+.barcode-manual-form { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 8px; align-items: end; margin: 4px 0 12px; }
+.barcode-manual-form .modal-field { margin: 0; }
+.barcode-manual-form .secondary-button { min-height: 46px; white-space: nowrap; }
+@media (max-width: 720px) {
+  .central-add-search-form { grid-template-columns: 1fr 1fr; }
+  .central-add-search-form .manager-search { grid-column: 1 / -1; }
+  .central-add-search-button, .central-barcode-button { width: 100%; min-height: 46px; }
+}
+@media (max-width: 430px) {
+  .central-add-search-form { grid-template-columns: 1fr; }
+  .central-add-search-form .manager-search { grid-column: auto; }
+  .barcode-manual-form { grid-template-columns: 1fr; }
+  .barcode-camera-wrap { aspect-ratio: 1 / 1; }
+}
