@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const CFG = window.APP_CONFIG || { appName: 'Mampfo', version: '0.8.2' };
+  const CFG = window.APP_CONFIG || { appName: 'Mampfo', version: '0.8.3' };
   const STORAGE = {
     settings: 'mampfo.settings.v2',
     entries: 'mampfo.entries.v2',

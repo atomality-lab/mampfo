@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.8.3 – frischer Cloud-Stand statt API-Cache
+
+- Service Worker cached nur noch Ressourcen der Mampfo-App auf derselben Domain.
+- Supabase-, Open-Food-Facts- und andere externe GET-Anfragen werden nicht mehr aus dem PWA-Cache beantwortet.
+- Supabase-REST-GETs verwenden zusätzlich `cache: no-store`.
+- Behebt den Fall, dass Smartphone-Änderungen in Supabase vorhanden sind, der Desktop beim Sync aber einen älteren gecachten Cloud-Snapshot liest.
+- Verhindert außerdem, dass veraltete Cloud-Antworten bereits gelöschte Datensätze erneut lokal einspielen.
+- Sync-/Löschlogik aus v0.8.2 bleibt unverändert.
+- Keine Änderung am Supabase-Schema.
+- Service-Worker-Cache auf `mampfo-v0.8.3` aktualisiert.
+
 ## v0.8.2 – deterministischer Pull & Löschschutz
 
 - Aktive Cloud-Datensätze, die lokal ohne ausdrückliche Löschmarke fehlen, werden unabhängig von Baseline-/Hashzuständen wiederhergestellt.

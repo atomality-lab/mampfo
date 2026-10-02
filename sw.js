@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mampfo-v0.8.2';
+const CACHE_NAME = 'mampfo-v0.8.3';
 const ASSETS = [
   './',
   './index.html',
@@ -28,12 +28,29 @@ self.addEventListener('activate', event => {
 });
 
 self.addEventListener('fetch', event => {
-  if (event.request.method !== 'GET') return;
+  const request = event.request;
+  if (request.method !== 'GET') return;
+
+  const url = new URL(request.url);
+
+  // v0.8.3: Externe Datenquellen niemals über den App-Cache bedienen.
+  // Dazu gehören insbesondere Supabase und Open Food Facts. Sonst kann ein
+  // Gerät beim Sync veraltete Cloud-Antworten aus Cache Storage erhalten.
+  if (url.origin !== self.location.origin) return;
+
   event.respondWith(
-    caches.match(event.request).then(cached => cached || fetch(event.request).then(response => {
-      const copy = response.clone();
-      caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy));
+    caches.match(request).then(cached => cached || fetch(request).then(response => {
+      if (response && response.ok) {
+        const copy = response.clone();
+        caches.open(CACHE_NAME).then(cache => cache.put(request, copy));
+      }
       return response;
-    }).catch(() => caches.match('./index.html')))
+    }).catch(error => {
+      // Nur echte Seitennavigationen erhalten offline die App-Shell zurück.
+      // Für fehlende JS/CSS/sonstige Requests darf keine HTML-Datei als
+      // Ersatzantwort eingeschleust werden.
+      if (request.mode === 'navigate') return caches.match('./index.html');
+      throw error;
+    }))
   );
 });

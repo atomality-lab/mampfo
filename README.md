@@ -1,4 +1,16 @@
-# Mampfo v0.8.2
+# Mampfo v0.8.3
+
+## Cloud-Cache-Korrektur (v0.8.3)
+
+v0.8.3 korrigiert einen Fehler außerhalb des eigentlichen Drei-Wege-Merges: Der bisherige Service Worker konnte auch externe GET-Antworten cachen. Dadurch konnte ein Desktop beim Synchronisieren einen älteren Supabase-Stand erhalten, obwohl ein Smartphone bereits neue Einträge hochgeladen hatte.
+
+- Externe Anfragen wie Supabase und Open Food Facts werden vom Service Worker nicht mehr gecacht.
+- Supabase-Lesezugriffe verwenden zusätzlich `cache: no-store`.
+- Der Offline-Cache für die eigentliche Mampfo-App bleibt erhalten.
+- Die Sync-, Lösch-, Barcode- und Fastenlogik aus v0.8.2 bleibt unverändert.
+- Keine Änderung am Supabase-Schema.
+
+Nach dem Update beide Geräte einmal vollständig schließen und neu öffnen. Auf dem Smartphone zuerst synchronisieren, anschließend auf dem Desktop. Website-Daten/LocalStorage nicht löschen.
 
 ## Sync-Konsistenz (v0.8.2)
 
