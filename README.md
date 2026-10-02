@@ -1,4 +1,16 @@
-# Mampfo v0.8.1
+# Mampfo v0.8.2
+
+## Sync-Konsistenz (v0.8.2)
+
+v0.8.2 korrigiert einen verbliebenen Fehler beim Abgleich von physisch fehlenden Datensätzen und expliziten Löschungen.
+
+- **Aktiver Cloud-Datensatz + lokal fehlt + keine Löschmarke** wird immer aus der Cloud wiederhergestellt. Eine alte Sync-Baseline kann den Download nicht mehr verdecken.
+- **Explizite lokale Löschmarke** hat immer Vorrang, selbst wenn ein alter Cloud-Pull den Datensatz zwischenzeitlich wieder lokal eingespielt hat.
+- Bestätigte Löschungen werden in Supabase als `deleted_at`-Tombstone geschrieben und anschließend lokal bereinigt.
+- Die Race-Guard-, Konflikt-, Barcode- und Fastenlogik aus v0.8.1/v0.8.0 bleibt erhalten.
+- Keine Änderung am Supabase-Schema.
+
+Wichtig bei einem auseinander gelaufenen Gerät: Website-Daten/LocalStorage **nicht löschen**, weil dort die noch offenen Löschmarken liegen. Ein hartes Neuladen ist unproblematisch.
 
 ## Sync-Recovery (v0.8.1)
 

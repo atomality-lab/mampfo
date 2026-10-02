@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const CFG = window.APP_CONFIG || { appName: 'Mampfo', version: '0.8.1' };
+  const CFG = window.APP_CONFIG || { appName: 'Mampfo', version: '0.8.2' };
   const STORAGE = {
     settings: 'mampfo.settings.v2',
     entries: 'mampfo.entries.v2',
@@ -274,7 +274,7 @@
   document.title = `${CFG.appName} · v${CFG.version}`;
 
   let cloudApplyInProgress = false;
-  // v0.8.1: Laufende Cloud-Synchronisationen dürfen keinen älteren lokalen
+  // v0.8.2: Laufende Cloud-Synchronisationen dürfen keinen älteren lokalen
   // Snapshot über Änderungen schreiben, die während des Syncs neu entstehen.
   // Die Revision lebt nur für die aktuelle App-Sitzung und wird bei jeder
   // echten lokalen Persistierung erhöht.

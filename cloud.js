@@ -559,7 +559,7 @@
     return loadJson(backupKey(userId), null);
   }
 
-  function createLocalBackup(userId, reason, snapshot = localData(), appVersion = '0.8.1') {
+  function createLocalBackup(userId, reason, snapshot = localData(), appVersion = '0.8.2') {
     if (!userId) throw new Error('Für die Sicherheitskopie fehlt die Benutzerzuordnung.');
     const backup = {
       schema: 1,
@@ -607,7 +607,7 @@
     localStorage.setItem(STORAGE.dataVersion, String(snapshot.dataVersion || 4));
   }
 
-  function restoreLastBackup(appVersion = '0.8.1') {
+  function restoreLastBackup(appVersion = '0.8.2') {
     const userId = currentUser()?.id;
     if (!userId) throw new Error('Bitte zuerst bei Mampfo Cloud anmelden.');
     const backup = lastBackup(userId);
@@ -886,10 +886,14 @@
   }
 
   function effectiveLocalState(id, localMap, baseEntry, deletion = null) {
-    if (localMap.has(id)) return stateFromRecord(localMap.get(id));
-    // v0.7.2.3: Fehlen allein ist keine Löschung mehr. Nur eine explizite
-    // Löschmarke darf einen Datensatz in der Cloud als gelöscht markieren.
+    // v0.8.2: Eine ausdrückliche Benutzer-Löschung hat immer Vorrang.
+    // Falls ein älterer Cloud-Pull den Datensatz zwischenzeitlich wieder lokal
+    // eingespielt hat, darf diese wiederaufgetauchte Kopie die Löschmarke nicht
+    // überstimmen.
     if (deletion) return deletedState(deletion.payload || null);
+    if (localMap.has(id)) return stateFromRecord(localMap.get(id));
+    // Fehlen allein ist keine Löschung. Ohne Löschmarke bleibt eine bekannte
+    // Baseline lediglich ein Vergleichsanker und darf keine Cloud-Löschung auslösen.
     if (baseEntry) return stateFromBaseline(baseEntry);
     return absentState();
   }
@@ -1013,7 +1017,7 @@
     }], 'user_id');
   }
 
-  async function initializeCloud(appVersion = '0.8.1') {
+  async function initializeCloud(appVersion = '0.8.2') {
     const user = await getUser();
     if (!user?.id) throw new Error('Die Anmeldung konnte nicht bestätigt werden.');
     const before = await cloudCounts();
@@ -1056,7 +1060,7 @@
     return await cloudCounts();
   }
 
-  async function performSync(appVersion = '0.8.1', reason = 'manual') {
+  async function performSync(appVersion = '0.8.2', reason = 'manual') {
     const user = await getUser();
     if (!user?.id) throw new Error('Bitte zuerst bei Mampfo Cloud anmelden.');
     const counts = await cloudCounts();
@@ -1158,6 +1162,52 @@
               changedLocal = true;
               continue;
             }
+          }
+        }
+
+        // v0.8.2: Explizite Löschungen werden vor dem Drei-Wege-Merge
+        // deterministisch abgearbeitet. Eine Löschmarke ist eine bewusste
+        // Benutzeraktion und hat deshalb Vorrang vor einer eventuell wieder
+        // aufgetauchten lokalen Kopie oder einer veralteten Baseline.
+        if (explicitDeletion) {
+          const actualRemoteState = remoteMap.has(id) ? stateFromRemoteRow(remoteMap.get(id)) : absentState();
+          const deletionState = deletedState(explicitDeletion.payload || localMap.get(id) || null);
+
+          if (actualRemoteState.kind === 'active') {
+            await guardedPushRecord(collection, id, deletionState, user.id, remoteMap.get(id)?.payload || explicitDeletion.payload || null);
+            uploaded += 1;
+          }
+
+          // Lokal darf nach einer bestätigten Löschung keine durch einen alten
+          // Pull wiederbelebte aktive Kopie stehen bleiben.
+          if (localMap.has(id)) {
+            applyStateToSnapshot(working, collection, id, deletionState);
+            changedLocal = true;
+          }
+
+          if (actualRemoteState.kind === 'absent') {
+            // Physisch nicht vorhandene Cloud-Zeile erfüllt die Löschabsicht
+            // ebenfalls. Keine Ghost-Baseline zurücklassen.
+            delete baseline.collections[collection][id];
+          } else {
+            markBaselineRecord(baseline, collection, id, deletionState);
+          }
+          clearDeletion(collection, id, user.id);
+          continue;
+        }
+
+        // v0.8.2 Recovery: Ein aktiver Cloud-Datensatz, der lokal fehlt, wird
+        // ohne ausdrückliche Löschmarke immer wiederhergestellt. Diese physische
+        // Regel steht bewusst vor Hash/Baseline-Vergleichen, damit ein alter
+        // Sync-Stand fehlende Downloads nicht als "bereits bekannt" versteckt.
+        if (localPhysicallyMissing && remoteMap.has(id)) {
+          const actualRemoteState = stateFromRemoteRow(remoteMap.get(id));
+          if (actualRemoteState.kind === 'active') {
+            applyStateToSnapshot(working, collection, id, actualRemoteState);
+            downloaded += 1;
+            changedLocal = true;
+            markBaselineRecord(baseline, collection, id, actualRemoteState);
+            continue;
           }
         }
 
@@ -1370,7 +1420,7 @@
     return { uploaded, downloaded, conflicts: nextConflicts.length, changedLocal, lastSyncAt: stamp };
   }
 
-  async function syncNow(appVersion = '0.8.1', options = {}) {
+  async function syncNow(appVersion = '0.8.2', options = {}) {
     if (syncPromise) return syncPromise;
     const reason = options.reason || 'manual';
     const userId = currentUser()?.id;
@@ -1409,7 +1459,7 @@
     return syncPromise;
   }
 
-  function scheduleSync(appVersion = '0.8.1', options = {}) {
+  function scheduleSync(appVersion = '0.8.2', options = {}) {
     if (!appReady || !isConfigured() || !currentUser()) return;
     const reason = options.reason || 'automatic';
     if (['local-change', 'backup-restore', 'after-conflict'].includes(reason)) markPending(currentUser()?.id, reason);
@@ -1428,7 +1478,7 @@
     }, Math.max(0, delay));
   }
 
-  function onAppReady(appVersion = '0.8.1') {
+  function onAppReady(appVersion = '0.8.2') {
     appReady = true;
     if (!isOnline()) {
       markPending(currentUser()?.id, 'app-start-offline');
@@ -1468,7 +1518,7 @@
     return effectiveLocalState(conflict.recordId, map, baseEntry, deletionMarker(conflict.collection, conflict.recordId, userId));
   }
 
-  async function resolveConflict(conflictIdentifier, choice, appVersion = '0.8.1') {
+  async function resolveConflict(conflictIdentifier, choice, appVersion = '0.8.2') {
     const user = await getUser();
     if (!user?.id) throw new Error('Bitte zuerst anmelden.');
     const list = conflicts(user.id);

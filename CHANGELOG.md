@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.8.2 – deterministischer Pull & Löschschutz
+
+- Aktive Cloud-Datensätze, die lokal ohne ausdrückliche Löschmarke fehlen, werden unabhängig von Baseline-/Hashzuständen wiederhergestellt.
+- Explizite lokale Löschmarken haben Vorrang vor wiederaufgetauchten lokalen Kopien.
+- Bewusst gelöschte Datensätze werden zuverlässig als Cloud-Tombstone übertragen und lokal entfernt.
+- Behebt insbesondere den Zustand **Cloud 86 / lokal 77**, bei dem der Sync zuvor ohne Übernahme stehen bleiben konnte.
+- Verhindert, dass bereits gelöschte Ernährungseinträge durch einen späteren Pull erneut erscheinen.
+- Race-Guard und semantische Konfliktbereinigung aus v0.8.1 bleiben aktiv.
+- Keine Änderung am Supabase-Schema.
+- Service-Worker-Cache auf `mampfo-v0.8.2` aktualisiert.
+
 ## v0.8.1 – Sync-Recovery
 
 - Race-Guard: Lokale Änderungen während eines laufenden Syncs erzwingen einen Neustart mit aktuellem Snapshot.
