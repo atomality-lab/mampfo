@@ -1,4 +1,16 @@
-# Mampfo v0.8.0
+# Mampfo v0.8.1
+
+## Sync-Recovery (v0.8.1)
+
+Dieser Patch bleibt funktional auf dem Stand von v0.8.0 und stabilisiert ausschließlich den Geräteabgleich.
+
+- Lokale Änderungen, die während eines laufenden Syncs entstehen (z. B. Erfassen oder Barcode-Scan), können nicht mehr von einem älteren Sync-Snapshot überholt werden. Mampfo startet den Abgleich automatisch mit dem aktuellen Stand neu.
+- Eine aktive lokale ID, die laut alter Sync-Basis bereits bekannt ist, aber physisch in Supabase fehlt, wird erneut hochgeladen. Dadurch können festhängende lokale Einträge/Lebensmittel wieder in die Cloud gelangen.
+- Fachlich identische Datensätze mit abweichenden technischen Zeitstempeln oder automatisch ergänzten Standardfeldern erzeugen keinen Endloskonflikt mehr.
+- Bei Lebensmitteln werden reine Nutzungsmetadaten (`usageCount`, `lastUsedAt`) zusammengeführt, wenn die eigentlichen Lebensmittelwerte identisch sind.
+- Die Konfliktauflösung akzeptiert harmlose Normalisierungen zwischen Anzeige und Klick. Sind beide Seiten inzwischen fachlich identisch, wird der Konflikt automatisch bereinigt.
+- Keine Änderung am Supabase-Schema.
+- Barcode-Funktionen aus v0.8.0 bleiben unverändert.
 
 ## Barcode-Scanner (v0.8.0)
 

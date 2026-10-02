@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.8.1 – Sync-Recovery
+
+- Race-Guard: Lokale Änderungen während eines laufenden Syncs erzwingen einen Neustart mit aktuellem Snapshot.
+- Bis zu drei automatische Sync-Neustarts bei gleichzeitiger lokaler Bearbeitung.
+- Aktive lokale Datensätze werden erneut hochgeladen, wenn ihre Cloud-Zeile physisch fehlt, obwohl eine alte Baseline sie bereits kannte.
+- Fachlich identische Datensätze werden trotz technischer Zeitstempel-/Default-Unterschiede kanonisiert statt als Konflikt festzuhängen.
+- Lebensmittel-Nutzungsmetadaten werden bei ansonsten identischen Datensätzen zusammengeführt.
+- Konflikte werden automatisch entfernt, wenn lokale und Cloud-Version inzwischen fachlich identisch sind.
+- Konfliktprüfung toleriert harmlose Normalisierung zwischen Anzeige und Entscheidung.
+- Keine Änderung am Supabase-Schema.
+- Service-Worker-Cache auf `mampfo-v0.8.1` aktualisiert.
+
+
 ## v0.8.0 – Barcode-Scanner
 
 - Barcode-Button direkt in der zentralen Erfassungssuche.

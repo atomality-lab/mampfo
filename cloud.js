@@ -306,6 +306,30 @@
     return storageSnapshot();
   }
 
+  // v0.8.1: Während eines laufenden Syncs können durch Erfassen/Scannen neue
+  // lokale Datensätze entstehen. Ein älterer Sync-Snapshot darf diese Änderungen
+  // niemals überschreiben. Die App stellt dafür eine sitzungsweite Revision bereit.
+  function localDataRevision() {
+    try {
+      const revision = window.MampfoDataBridge?.revision?.();
+      return Number.isFinite(Number(revision)) ? Number(revision) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function syncRestartError() {
+    const error = new Error('Lokale Daten wurden während der Synchronisierung geändert. Mampfo startet den Abgleich mit dem aktuellen Stand neu.');
+    error.code = 'MAMPFO_SYNC_LOCAL_CHANGED';
+    return error;
+  }
+
+  function ensureLocalRevision(expectedRevision) {
+    if (expectedRevision == null) return;
+    const current = localDataRevision();
+    if (current != null && current !== expectedRevision) throw syncRestartError();
+  }
+
   function localCounts() {
     const data = localData();
     return {
@@ -364,6 +388,60 @@
     if (a.kind !== b.kind) return false;
     if (a.kind === 'active') return a.hash === b.hash;
     return true;
+  }
+
+  // v0.8.1: Konflikte sollen fachliche Unterschiede anzeigen, nicht bloß
+  // unterschiedliche Zeitstempel oder automatisch ergänzte Standardfelder.
+  function syncComparablePayload(collection, payload) {
+    const value = deepClone(payload || {});
+    if (value && typeof value === 'object') {
+      delete value.createdAt;
+      delete value.updatedAt;
+    }
+    if (collection === 'entries') {
+      if (!Object.prototype.hasOwnProperty.call(value, 'source')) value.source = 'manual';
+      if (!Object.prototype.hasOwnProperty.call(value, 'foodId')) value.foodId = null;
+      if (!Object.prototype.hasOwnProperty.call(value, 'recipeId')) value.recipeId = null;
+      if (!Object.prototype.hasOwnProperty.call(value, 'fat')) value.fat = null;
+      if (!Object.prototype.hasOwnProperty.call(value, 'carbohydrates')) value.carbohydrates = null;
+    } else if (collection === 'foods') {
+      // Nutzungshäufigkeit und letzter Einsatz sind abgeleitete Komfortwerte.
+      // Sie dürfen keinen inhaltlich identischen Lebensmittel-Datensatz blockieren.
+      delete value.usageCount;
+      delete value.lastUsedAt;
+      if (!Object.prototype.hasOwnProperty.call(value, 'favorite')) value.favorite = false;
+    } else if (collection === 'fastPlans') {
+      if (!Object.prototype.hasOwnProperty.call(value, 'enabled')) value.enabled = true;
+    }
+    return value;
+  }
+
+  function syncStatesSemanticallyEqual(collection, a, b) {
+    if (!a || !b || a.kind !== b.kind) return false;
+    if (a.kind !== 'active') return true;
+    if (collection === 'fastingSessions') return fastingStatesSemanticallyEqual(a, b);
+    return hashValue(syncComparablePayload(collection, a.payload)) === hashValue(syncComparablePayload(collection, b.payload));
+  }
+
+  function canonicalEquivalentState(collection, localState, remoteState, recordId) {
+    if (collection === 'fastingSessions') return canonicalFastingState(localState, remoteState, recordId);
+    const local = localState?.payload || {};
+    const remote = remoteState?.payload || {};
+    const localUpdated = new Date(local.updatedAt || 0).getTime() || 0;
+    const remoteUpdated = new Date(remote.updatedAt || 0).getTime() || 0;
+    const base = localUpdated >= remoteUpdated ? local : remote;
+    const merged = { ...deepClone(base), id: String(recordId) };
+    const created = [local.createdAt, remote.createdAt].filter(Boolean).sort();
+    const updated = [local.updatedAt, remote.updatedAt].filter(Boolean).sort();
+    if (created.length) merged.createdAt = created[0];
+    if (updated.length) merged.updatedAt = updated[updated.length - 1];
+    if (collection === 'foods') {
+      merged.usageCount = Math.max(Number(local.usageCount || 0), Number(remote.usageCount || 0));
+      const used = [local.lastUsedAt, remote.lastUsedAt].filter(Boolean).sort();
+      merged.lastUsedAt = used.length ? used[used.length - 1] : null;
+      merged.favorite = Boolean(local.favorite || remote.favorite);
+    }
+    return activeState(merged);
   }
 
   function baselineEntry(state) {
@@ -481,7 +559,7 @@
     return loadJson(backupKey(userId), null);
   }
 
-  function createLocalBackup(userId, reason, snapshot = localData(), appVersion = '0.8.0') {
+  function createLocalBackup(userId, reason, snapshot = localData(), appVersion = '0.8.1') {
     if (!userId) throw new Error('Für die Sicherheitskopie fehlt die Benutzerzuordnung.');
     const backup = {
       schema: 1,
@@ -529,7 +607,7 @@
     localStorage.setItem(STORAGE.dataVersion, String(snapshot.dataVersion || 4));
   }
 
-  function restoreLastBackup(appVersion = '0.8.0') {
+  function restoreLastBackup(appVersion = '0.8.1') {
     const userId = currentUser()?.id;
     if (!userId) throw new Error('Bitte zuerst bei Mampfo Cloud anmelden.');
     const backup = lastBackup(userId);
@@ -935,7 +1013,7 @@
     }], 'user_id');
   }
 
-  async function initializeCloud(appVersion = '0.8.0') {
+  async function initializeCloud(appVersion = '0.8.1') {
     const user = await getUser();
     if (!user?.id) throw new Error('Die Anmeldung konnte nicht bestätigt werden.');
     const before = await cloudCounts();
@@ -978,7 +1056,7 @@
     return await cloudCounts();
   }
 
-  async function performSync(appVersion = '0.8.0', reason = 'manual') {
+  async function performSync(appVersion = '0.8.1', reason = 'manual') {
     const user = await getUser();
     if (!user?.id) throw new Error('Bitte zuerst bei Mampfo Cloud anmelden.');
     const counts = await cloudCounts();
@@ -989,6 +1067,17 @@
 
     const remote = await fetchRemoteSnapshot();
     const originalLocal = localData();
+    const startRevision = localDataRevision();
+    const guardedPushRecord = async (...args) => {
+      ensureLocalRevision(startRevision);
+      await pushRecordState(...args);
+      ensureLocalRevision(startRevision);
+    };
+    const guardedPushSettings = async (...args) => {
+      ensureLocalRevision(startRevision);
+      await pushSettingsState(...args);
+      ensureLocalRevision(startRevision);
+    };
     // Ein einzelner lokaler Rücksprungpunkt schützt vor unerwarteten Cloud-Pulls
     // und vor einem Abbruch mitten im mehrstufigen Geräteabgleich.
     createLocalBackup(user.id, reason, originalLocal, appVersion);
@@ -1072,6 +1161,23 @@
           }
         }
 
+        // v0.8.1 Recovery: Cloud-Löschungen werden in Mampfo immer als Tombstone
+        // (deleted_at) gespeichert. Ist eine früher synchronisierte aktive ID
+        // physisch komplett aus der Cloud verschwunden, während sie lokal noch
+        // aktiv existiert, darf die alte Baseline das nicht unsichtbar machen.
+        // Der lokale Datensatz wird erneut hochgeladen. Das rettet insbesondere
+        // Einträge, die durch einen früher unterbrochenen/überholten Sync nie
+        // dauerhaft in Supabase angekommen sind.
+        if (baseEntry && !baseEntry.deleted && !localPhysicallyMissing && remotePhysicallyMissing && !explicitDeletion) {
+          const physicalLocalState = stateFromRecord(localMap.get(id));
+          if (physicalLocalState.kind === 'active') {
+            await guardedPushRecord(collection, id, physicalLocalState, user.id);
+            uploaded += 1;
+            markBaselineRecord(baseline, collection, id, physicalLocalState);
+            continue;
+          }
+        }
+
         const localState = effectiveLocalState(id, localMap, baseEntry, explicitDeletion);
         const remoteState = effectiveRemoteState(id, remoteMap, baseEntry);
 
@@ -1089,7 +1195,31 @@
             changedLocal = true;
           }
           if (!statesEqual(remoteState, finalState)) {
-            await pushRecordState(collection, id, finalState, user.id, remoteMap.get(id)?.payload || null);
+            await guardedPushRecord(collection, id, finalState, user.id, remoteMap.get(id)?.payload || null);
+            uploaded += 1;
+          }
+          markBaselineRecord(baseline, collection, id, finalState);
+          clearDeletion(collection, id, user.id);
+          continue;
+        }
+
+        // v0.8.1: Auch bei Ernährung, Lebensmitteln, Rezepten und Fastenplänen
+        // können ältere Geräte nur durch technische Standardfelder/Zeitstempel
+        // unterschiedliche Hashes erzeugen. Sind die fachlichen Werte identisch,
+        // wird daraus ein gemeinsamer kanonischer Stand statt eines Endloskonflikts.
+        if (collection !== 'fastingSessions'
+          && localState.kind === 'active'
+          && remoteState.kind === 'active'
+          && syncStatesSemanticallyEqual(collection, localState, remoteState)
+          && !statesEqual(localState, remoteState)) {
+          const finalState = canonicalEquivalentState(collection, localState, remoteState, id);
+          if (!statesEqual(localState, finalState)) {
+            applyStateToSnapshot(working, collection, id, finalState);
+            downloaded += 1;
+            changedLocal = true;
+          }
+          if (!statesEqual(remoteState, finalState)) {
+            await guardedPushRecord(collection, id, finalState, user.id, remoteMap.get(id)?.payload || null);
             uploaded += 1;
           }
           markBaselineRecord(baseline, collection, id, finalState);
@@ -1109,7 +1239,7 @@
           }
           if (remoteState.kind === 'absent' && localState.kind !== 'absent') {
             if (localState.kind === 'active') {
-              await pushRecordState(collection, id, localState, user.id);
+              await guardedPushRecord(collection, id, localState, user.id);
               uploaded += 1;
               markBaselineRecord(baseline, collection, id, localState);
             }
@@ -1153,7 +1283,7 @@
           continue;
         }
         if (localChanged && !remoteChanged) {
-          await pushRecordState(collection, id, localState, user.id, remoteMap.get(id)?.payload || null);
+          await guardedPushRecord(collection, id, localState, user.id, remoteMap.get(id)?.payload || null);
           uploaded += 1;
           markBaselineRecord(baseline, collection, id, localState);
           if (localState.kind === 'deleted') clearDeletion(collection, id, user.id);
@@ -1186,7 +1316,7 @@
     const baseSettingsState = stateFromBaseline(baseline.settings);
     if (!baseline.settings) {
       if (remoteSettingsState.kind === 'absent') {
-        await pushSettingsState(localSettingsState, user.id);
+        await guardedPushSettings(localSettingsState, user.id);
         uploaded += 1;
         baseline.settings = baselineEntry(localSettingsState);
       } else if (statesEqual(localSettingsState, remoteSettingsState)) {
@@ -1198,7 +1328,7 @@
       const localChanged = !statesEqual(localSettingsState, baseSettingsState);
       const remoteChanged = !statesEqual(remoteSettingsState, baseSettingsState);
       if (localChanged && !remoteChanged) {
-        await pushSettingsState(localSettingsState, user.id);
+        await guardedPushSettings(localSettingsState, user.id);
         uploaded += 1;
         baseline.settings = baselineEntry(localSettingsState);
       } else if (!localChanged && remoteChanged) {
@@ -1214,8 +1344,13 @@
       }
     }
 
-    if (changedLocal) applySnapshotLocally(working, 'cloud');
+    if (changedLocal) {
+      ensureLocalRevision(startRevision);
+      applySnapshotLocally(working, 'cloud');
+      ensureLocalRevision(startRevision);
+    }
 
+    ensureLocalRevision(startRevision);
     saveBaseline(user.id, baseline);
     saveConflicts(user.id, nextConflicts);
     await touchSyncState(user.id, appVersion);
@@ -1235,7 +1370,7 @@
     return { uploaded, downloaded, conflicts: nextConflicts.length, changedLocal, lastSyncAt: stamp };
   }
 
-  async function syncNow(appVersion = '0.8.0', options = {}) {
+  async function syncNow(appVersion = '0.8.1', options = {}) {
     if (syncPromise) return syncPromise;
     const reason = options.reason || 'manual';
     const userId = currentUser()?.id;
@@ -1246,10 +1381,27 @@
       throw error;
     }
     if (userId) setSyncStatus(userId, { inProgress: true, lastAttemptAt: new Date().toISOString(), reason });
-    syncPromise = performSync(appVersion, reason).catch(error => {
+
+    // v0.8.1: Wenn während eines Syncs lokal weiter erfasst wird, wird nicht
+    // mit dem veralteten Snapshot weitergemacht. Stattdessen startet der Sync
+    // bis zu dreimal sofort neu und nimmt den dann aktuellen lokalen Stand.
+    const runWithFreshLocalSnapshot = async () => {
+      let lastRestartError = null;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          return await performSync(appVersion, attempt ? `${reason}-retry-${attempt}` : reason);
+        } catch (error) {
+          if (error?.code !== 'MAMPFO_SYNC_LOCAL_CHANGED') throw error;
+          lastRestartError = error;
+        }
+      }
+      throw lastRestartError || syncRestartError();
+    };
+
+    syncPromise = runWithFreshLocalSnapshot().catch(error => {
       const activeUserId = currentUser()?.id || userId;
       if (activeUserId) {
-        if (isConnectivityError(error)) markPending(activeUserId, reason);
+        if (isConnectivityError(error) || error?.code === 'MAMPFO_SYNC_LOCAL_CHANGED') markPending(activeUserId, reason);
         setSyncStatus(activeUserId, { lastError: error.message || String(error), lastAttemptAt: new Date().toISOString(), reason, inProgress: false });
       }
       throw error;
@@ -1257,7 +1409,7 @@
     return syncPromise;
   }
 
-  function scheduleSync(appVersion = '0.8.0', options = {}) {
+  function scheduleSync(appVersion = '0.8.1', options = {}) {
     if (!appReady || !isConfigured() || !currentUser()) return;
     const reason = options.reason || 'automatic';
     if (['local-change', 'backup-restore', 'after-conflict'].includes(reason)) markPending(currentUser()?.id, reason);
@@ -1276,7 +1428,7 @@
     }, Math.max(0, delay));
   }
 
-  function onAppReady(appVersion = '0.8.0') {
+  function onAppReady(appVersion = '0.8.1') {
     appReady = true;
     if (!isOnline()) {
       markPending(currentUser()?.id, 'app-start-offline');
@@ -1287,6 +1439,11 @@
 
   function stateSignature(state) {
     return `${state.kind}:${state.kind === 'active' ? state.hash : ''}`;
+  }
+
+  function conflictStateStillEquivalent(collection, currentState, storedState) {
+    if (statesEqual(currentState, storedState)) return true;
+    return syncStatesSemanticallyEqual(collection, currentState, storedState);
   }
 
   async function fetchRemoteRecordState(collection, recordId) {
@@ -1311,7 +1468,7 @@
     return effectiveLocalState(conflict.recordId, map, baseEntry, deletionMarker(conflict.collection, conflict.recordId, userId));
   }
 
-  async function resolveConflict(conflictIdentifier, choice, appVersion = '0.8.0') {
+  async function resolveConflict(conflictIdentifier, choice, appVersion = '0.8.1') {
     const user = await getUser();
     if (!user?.id) throw new Error('Bitte zuerst anmelden.');
     const list = conflicts(user.id);
@@ -1319,9 +1476,56 @@
     if (!conflict) return { remaining: list.length };
     const currentLocal = currentLocalConflictState(conflict);
     const currentRemote = await fetchRemoteRecordState(conflict.collection, conflict.recordId);
-    if (stateSignature(currentLocal) !== stateSignature(conflict.local) || stateSignature(currentRemote) !== stateSignature(conflict.remote)) {
+
+    // v0.8.1: Wenn beide Seiten inzwischen fachlich identisch sind, ist der
+    // Konflikt bereits erledigt. Technische Zeitstempel/Defaultwerte sollen den
+    // Dialog nicht endlos wieder öffnen.
+    if (syncStatesSemanticallyEqual(conflict.collection, currentLocal, currentRemote)) {
+      const baseline = loadBaseline(user.id);
+      const finalState = conflict.collection === 'settings'
+        ? currentLocal
+        : (currentLocal.kind === 'active'
+            ? canonicalEquivalentState(conflict.collection, currentLocal, currentRemote, conflict.recordId)
+            : currentLocal);
+
+      if (conflict.collection === 'settings') {
+        if (!statesEqual(currentRemote, finalState)) await pushSettingsState(finalState, user.id);
+        if (!statesEqual(currentLocal, finalState)) {
+          const snapshot = localData();
+          createLocalBackup(user.id, 'conflict-auto-equivalent', snapshot, appVersion);
+          applySettingsToSnapshot(snapshot, finalState);
+          applySnapshotLocally(snapshot, 'cloud-conflict');
+        }
+        baseline.settings = baselineEntry(finalState);
+      } else {
+        if (finalState.kind === 'active') {
+          if (!statesEqual(currentRemote, finalState)) await pushRecordState(conflict.collection, conflict.recordId, finalState, user.id, currentRemote.payload || conflict.remote?.payload || null);
+          if (!statesEqual(currentLocal, finalState)) {
+            const snapshot = localData();
+            createLocalBackup(user.id, 'conflict-auto-equivalent', snapshot, appVersion);
+            applyStateToSnapshot(snapshot, conflict.collection, conflict.recordId, finalState);
+            applySnapshotLocally(snapshot, 'cloud-conflict');
+          }
+        }
+        markBaselineRecord(baseline, conflict.collection, conflict.recordId, finalState);
+        clearDeletion(conflict.collection, conflict.recordId, user.id);
+      }
+      saveBaseline(user.id, baseline);
+      const remaining = list.filter(item => item.id !== conflictIdentifier);
+      saveConflicts(user.id, remaining);
+      await touchSyncState(user.id, appVersion);
+      setSyncStatus(user.id, { lastSyncAt: new Date().toISOString(), lastError: null, conflictCount: remaining.length, inProgress: false });
+      scheduleSync(appVersion, { delay: 250, reason: 'after-conflict' });
+      return { remaining: remaining.length, autoResolved: true };
+    }
+
+    const localStillSame = conflictStateStillEquivalent(conflict.collection, currentLocal, conflict.local);
+    const remoteStillSame = conflictStateStillEquivalent(conflict.collection, currentRemote, conflict.remote);
+    if (!localStillSame || !remoteStillSame) {
       await syncNow(appVersion, { reason: 'conflict-refresh' });
-      throw new Error('Der Datensatz hat sich inzwischen erneut geändert. Mampfo hat den Konflikt aktualisiert.');
+      const refreshed = conflicts(user.id).find(item => item.id === conflictIdentifier);
+      if (!refreshed) return { remaining: conflicts(user.id).length, autoResolved: true };
+      throw new Error('Der Konflikt wurde mit dem aktuellen Datenstand neu geladen. Bitte die beiden Varianten noch einmal prüfen.');
     }
 
     const baseline = loadBaseline(user.id);

@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const CFG = window.APP_CONFIG || { appName: 'Mampfo', version: '0.8.0' };
+  const CFG = window.APP_CONFIG || { appName: 'Mampfo', version: '0.8.1' };
   const STORAGE = {
     settings: 'mampfo.settings.v2',
     entries: 'mampfo.entries.v2',
@@ -274,6 +274,11 @@
   document.title = `${CFG.appName} · v${CFG.version}`;
 
   let cloudApplyInProgress = false;
+  // v0.8.1: Laufende Cloud-Synchronisationen dürfen keinen älteren lokalen
+  // Snapshot über Änderungen schreiben, die während des Syncs neu entstehen.
+  // Die Revision lebt nur für die aktuelle App-Sitzung und wird bei jeder
+  // echten lokalen Persistierung erhöht.
+  let localDataRevision = 0;
 
   function persist(options = {}) {
     localStorage.setItem(STORAGE.settings, JSON.stringify(state.settings));
@@ -284,7 +289,10 @@
     localStorage.setItem(STORAGE.fastingSessions, JSON.stringify(state.fastingSessions));
     localStorage.setItem(STORAGE.onboarded, state.onboarded ? 'yes' : 'no');
     localStorage.setItem(STORAGE.dataVersion, '4');
-    if (!options.skipCloud && !cloudApplyInProgress) window.MampfoCloud?.scheduleSync?.(CFG.version, { reason: 'local-change' });
+    if (!options.skipCloud && !cloudApplyInProgress) {
+      localDataRevision += 1;
+      window.MampfoCloud?.scheduleSync?.(CFG.version, { reason: 'local-change' });
+    }
   }
 
   function cloudSnapshotFromState() {
@@ -333,6 +341,7 @@
   window.MampfoDataBridge = {
     snapshot: cloudSnapshotFromState,
     apply: applyCloudSnapshot,
+    revision: () => localDataRevision,
     canAutoSync: () => {
       if (modalRoot?.children?.length) return false;
       if (state.editingId || state.editingFoodId || state.editingRecipeId || state.fastingPlanEditing) return false;
@@ -2359,7 +2368,9 @@
       localButton.disabled = true; remoteButton.disabled = true;
       try {
         const result = await cloud.resolveConflict(conflict.id, choice, CFG.version);
-        showToast(choice === 'local' ? 'Version dieses Geräts übernommen.' : 'Cloud-Version übernommen.');
+        showToast(result.autoResolved
+          ? 'Konflikt war inzwischen inhaltlich identisch und wurde bereinigt.'
+          : (choice === 'local' ? 'Version dieses Geräts übernommen.' : 'Cloud-Version übernommen.'));
         if (result.remaining > 0) openCloudConflictResolver();
         else {
           modalRoot.innerHTML = '';
